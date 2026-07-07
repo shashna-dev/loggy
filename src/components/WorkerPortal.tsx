@@ -993,7 +993,7 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
                   className="form-control"
                   value={importRawText}
                   onChange={e => setImportRawText(e.target.value)}
-                  placeholder="Paste timesheet text here, or upload a clear photo. Example: Liam Patel 2026-07-07 08:00 17:00 break 30"
+                  placeholder="Paste timesheet text here, or upload a clear photo. Example: Tasal Ashna 2026-07-07 08:00 17:00 break 30"
                   rows={6}
                 />
               </div>

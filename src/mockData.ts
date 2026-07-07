@@ -4,19 +4,19 @@ import type { Worker, Client, Placement, Timesheet, User } from './types';
 export const mockUsers: User[] = [
   { id: 'u-1', name: 'Ilyas Jalalzai (Agency Admin)', email: 'admin@apexstaffing.ca', role: 'admin' },
   { id: 'u-2', name: 'Marcus Vance (Toronto Logistics)', email: 'marcus@torontologistics.ca', role: 'client', clientId: 'c-1' },
-  { id: 'u-3', name: 'Dr. Sarah Lin (BC Tech Services)', email: 'sarah@bctech.ca', role: 'client', clientId: 'c-2' },
-  { id: 'u-4', name: 'Jean-Pierre Martin (Montreal Retail)', email: 'jp@montrealretail.ca', role: 'client', clientId: 'c-3' },
-  { id: 'u-5', name: 'Liam Patel', email: 'liam@worker.ca', role: 'worker', workerId: 'w-1' },
-  { id: 'u-6', name: 'Sophia Chang', email: 'sophia@worker.ca', role: 'worker', workerId: 'w-2' },
-  { id: 'u-7', name: 'Chloe Dubois', email: 'chloe@worker.ca', role: 'worker', workerId: 'w-3' }
+  { id: 'u-3', name: 'Dr. Sarah Lin (Jogayee Services)', email: 'sarah@bctech.ca', role: 'client', clientId: 'c-2' },
+  { id: 'u-4', name: 'Jean-Pierre Martin (Lab-laboo)', email: 'jp@montrealretail.ca', role: 'client', clientId: 'c-3' },
+  { id: 'u-5', name: 'Tasal Ashna', email: 'tasal@worker.ca', role: 'worker', workerId: 'w-1' },
+  { id: 'u-6', name: 'Ilyas Jalalzai', email: 'ilyas.worker@worker.ca', role: 'worker', workerId: 'w-3' },
+  { id: 'u-7', name: 'Muska Jalalzai', email: 'muska@worker.ca', role: 'worker', workerId: 'w-2' }
 ];
 
 // Mock Workers
 export const mockWorkers: Worker[] = [
   {
     id: 'w-1',
-    name: 'Liam Patel',
-    email: 'liam@worker.ca',
+    name: 'Tasal Ashna',
+    email: 'tasal@worker.ca',
     phone: '416-555-0192',
     province: 'ON',
     basePayRate: 25.00,
@@ -25,8 +25,8 @@ export const mockWorkers: Worker[] = [
   },
   {
     id: 'w-2',
-    name: 'Sophia Chang',
-    email: 'sophia@worker.ca',
+    name: 'Muska Jalalzai',
+    email: 'muska@worker.ca',
     phone: '604-555-0143',
     province: 'BC',
     basePayRate: 32.50,
@@ -35,8 +35,8 @@ export const mockWorkers: Worker[] = [
   },
   {
     id: 'w-3',
-    name: 'Chloe Dubois',
-    email: 'chloe@worker.ca',
+    name: 'Ilyas Jalalzai',
+    email: 'ilyas.worker@worker.ca',
     phone: '514-555-0177',
     province: 'QC',
     basePayRate: 28.00,
@@ -49,7 +49,7 @@ export const mockWorkers: Worker[] = [
 export const mockClients: Client[] = [
   {
     id: 'c-1',
-    companyName: 'Toronto Logistical Hub Inc.',
+    companyName: 'Dairan Gasht Hub Inc',
     contactName: 'Marcus Vance',
     contactEmail: 'marcus@torontologistics.ca',
     contactPhone: '905-555-0112',
@@ -59,7 +59,7 @@ export const mockClients: Client[] = [
   },
   {
     id: 'c-2',
-    companyName: 'BC Tech Services Ltd.',
+    companyName: 'Jogayee Services Ltd',
     contactName: 'Dr. Sarah Lin',
     contactEmail: 'sarah@bctech.ca',
     contactPhone: '778-555-0199',
@@ -69,7 +69,7 @@ export const mockClients: Client[] = [
   },
   {
     id: 'c-3',
-    companyName: 'Montreal Retail Group Ltee.',
+    companyName: 'Lab-laboo Ltee',
     contactName: 'Jean-Pierre Martin',
     contactEmail: 'jp@montrealretail.ca',
     contactPhone: '450-555-0105',
@@ -125,7 +125,7 @@ export const gpsCoordinates = {
 
 // Seed Timesheets
 export const mockTimesheets: Timesheet[] = [
-  // 1. Liam Patel - Weekly Timesheet - Draft/In Progress (Ontario)
+  // 1. Tasal Ashna - Weekly Timesheet - Draft/In Progress (Ontario)
   {
     id: 'ts-1',
     placementId: 'p-1',
@@ -194,7 +194,7 @@ export const mockTimesheets: Timesheet[] = [
     ]
   },
   
-  // 2. Sophia Chang - Daily Wages Timesheet - Approved (British Columbia)
+  // 2. Muska Jalalzai - Daily Wages Timesheet - Approved (British Columbia)
   {
     id: 'ts-2',
     placementId: 'p-2',
@@ -237,7 +237,7 @@ export const mockTimesheets: Timesheet[] = [
     ]
   },
 
-  // 3. Chloe Dubois - Bi-weekly Timesheet - Rejected (Quebec)
+  // 3. Ilyas Jalalzai - Bi-weekly Timesheet - Rejected (Quebec)
   {
     id: 'ts-3',
     placementId: 'p-3',

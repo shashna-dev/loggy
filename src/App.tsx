@@ -275,9 +275,9 @@ function App() {
                 <option value={JSON.stringify(mockUsers[3])}>Jean-Pierre M. (QC Client Manager)</option>
               </optgroup>
               <optgroup label="Placed Workers (Candidates)">
-                <option value={JSON.stringify(mockUsers[4])}>Liam Patel (ON - Weekly Pay)</option>
-                <option value={JSON.stringify(mockUsers[5])}>Sophia Chang (BC - Daily Wages)</option>
-                <option value={JSON.stringify(mockUsers[6])}>Chloe Dubois (QC - Bi-weekly Pay)</option>
+                <option value={JSON.stringify(mockUsers[4])}>Tasal Ashna (Dairan Gasht - Weekly Pay)</option>
+                <option value={JSON.stringify(mockUsers[5])}>Ilyas Jalalzai (Lab-laboo - Bi-weekly Pay)</option>
+                <option value={JSON.stringify(mockUsers[6])}>Muska Jalalzai (Jogayee - Daily Wages)</option>
               </optgroup>
             </select>
           </div>

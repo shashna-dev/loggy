@@ -93,7 +93,7 @@ export const TimesheetImportModal: React.FC<TimesheetImportModalProps> = ({
               className="form-control"
               value={rawText}
               onChange={event => setRawText(event.target.value)}
-              placeholder="Paste timesheet text here, or upload a clear photo. Example: Liam Patel 2026-07-07 08:00 17:00 break 30"
+              placeholder="Paste timesheet text here, or upload a clear photo. Example: Tasal Ashna 2026-07-07 08:00 17:00 break 30"
               rows={6}
             />
           </div>
