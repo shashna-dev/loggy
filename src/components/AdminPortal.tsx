@@ -7,9 +7,11 @@ import {
   getMapLink,
   getTimesheetStatusClass,
   getTimesheetStatusLabel,
+  hasBlockingValidationIssues,
   isAgencyApprovalStatus,
   isReadyToInvoiceStatus,
-  isRevenueRecognizedStatus
+  isRevenueRecognizedStatus,
+  validateTimesheetEntries
 } from '../utils';
 import { importedRowsToTimeEntries, type ImportedTimesheetRow } from '../timesheetImport';
 import { TimesheetImportModal } from './TimesheetImportModal';
@@ -219,6 +221,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const handleBulkApprove = () => {
     const selectedPending = pendingTimesheets.filter(ts => selectedApprovalIds.includes(ts.id));
     if (selectedPending.length === 0) return;
+    const invalidCount = selectedPending.filter(ts => hasBlockingValidationIssues(ts.entries)).length;
+    if (invalidCount > 0) {
+      alert(`${invalidCount} selected timesheet${invalidCount === 1 ? ' has' : 's have'} validation errors. Fix or reject them before agency approval.`);
+      return;
+    }
     if (!confirm(`Agency approve ${selectedPending.length} selected timesheet${selectedPending.length === 1 ? '' : 's'} for invoicing?`)) return;
 
     selectedPending.forEach(ts => onSaveTimesheet({ ...ts, status: 'agency_approved' as const }));
@@ -583,8 +590,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 const gpsChecks = ts.entries.map(entry => evaluateEntryGps(entry, pl));
                 const hasGpsEntries = gpsChecks.some(check => check.status !== 'missing');
                 const needsGpsReview = gpsChecks.some(check => check.status === 'warning');
+                const validationIssues = validateTimesheetEntries(ts.entries);
+                const validationErrors = validationIssues.filter(issue => issue.severity === 'error').length;
+                const validationWarnings = validationIssues.filter(issue => issue.severity === 'warning').length;
 
                 const handleAdminApprove = () => {
+                  if (validationErrors > 0) {
+                    alert('This timesheet has validation errors. Reject it for correction before agency approval.');
+                    return;
+                  }
                   if (confirm('Agency approve this timesheet for invoicing?')) {
                     const updated = { ...ts, status: 'agency_approved' as const };
                     onSaveTimesheet(updated);
@@ -635,7 +649,26 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           {needsGpsReview ? 'Review required' : hasGpsEntries ? 'Verified' : 'Missing'}
                         </span>
                       </div>
+                      <div>
+                        Validation:{' '}
+                        <span className={`badge ${validationErrors > 0 ? 'badge-rejected' : validationWarnings > 0 ? 'badge-pending' : 'badge-approved'}`}>
+                          {validationErrors > 0 ? `${validationErrors} errors` : validationWarnings > 0 ? `${validationWarnings} warnings` : 'Clear'}
+                        </span>
+                      </div>
                     </div>
+
+                    {validationIssues.length > 0 && (
+                      <div style={{ marginTop: '12px', background: validationErrors > 0 ? 'var(--color-error-bg)' : 'var(--color-warning-bg)', border: `1px solid ${validationErrors > 0 ? 'var(--color-error)' : 'rgba(245, 158, 11, 0.35)'}`, padding: '10px 14px', borderRadius: '6px', fontSize: '0.78rem' }}>
+                        {validationIssues.slice(0, 4).map((issue, index) => (
+                          <div key={`${issue.entryId}-${index}`} style={{ color: issue.severity === 'error' ? 'var(--color-error)' : 'var(--color-warning)' }}>
+                            {issue.severity === 'error' ? 'Error' : 'Warning'}: {issue.message}
+                          </div>
+                        ))}
+                        {validationIssues.length > 4 && (
+                          <div style={{ color: 'var(--text-sub)' }}>+{validationIssues.length - 4} more issue{validationIssues.length - 4 === 1 ? '' : 's'}</div>
+                        )}
+                      </div>
+                    )}
 
                     {/* GPS verification listing */}
                     {hasGpsEntries && (

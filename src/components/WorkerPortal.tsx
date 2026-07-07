@@ -5,7 +5,10 @@ import {
   getMapLink,
   getTimesheetStatusClass,
   getTimesheetStatusLabel,
-  isWorkerEditableStatus
+  hasBlockingValidationIssues,
+  isWorkerEditableStatus,
+  validateTimeEntry,
+  validateTimesheetEntries
 } from '../utils';
 import { parseTimesheetText, type ImportedTimesheetRow } from '../timesheetImport';
 import { gpsCoordinates } from '../mockData';
@@ -356,6 +359,23 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
     e.preventDefault();
     if (!activeTimesheet || !activePlacement) return;
 
+    const draftEntry: TimeEntry = {
+      id: editingEntryId || `te-${Date.now()}`,
+      date: manualDate,
+      startTime: manualStart,
+      endTime: manualEnd,
+      breakMinutes: Number(manualBreak),
+      notes: manualNotes,
+      regularHours: 0,
+      overtimeHours: 0,
+      doubleTimeHours: 0
+    };
+    const draftIssues = validateTimeEntry(draftEntry).filter(issue => issue.severity === 'error');
+    if (draftIssues.length > 0) {
+      alert(draftIssues.map(issue => issue.message).join('\n'));
+      return;
+    }
+
     let updatedEntries = [...activeTimesheet.entries];
     
     if (editingEntryId) {
@@ -363,28 +383,17 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
         if (entry.id === editingEntryId) {
           return {
             ...entry,
-            date: manualDate,
-            startTime: manualStart,
-            endTime: manualEnd,
-            breakMinutes: Number(manualBreak),
-            notes: manualNotes
+            date: draftEntry.date,
+            startTime: draftEntry.startTime,
+            endTime: draftEntry.endTime,
+            breakMinutes: draftEntry.breakMinutes,
+            notes: draftEntry.notes
           };
         }
         return entry;
       });
     } else {
-      const newEntry: TimeEntry = {
-        id: `te-${Date.now()}`,
-        date: manualDate,
-        startTime: manualStart,
-        endTime: manualEnd,
-        breakMinutes: Number(manualBreak),
-        notes: manualNotes,
-        regularHours: 0,
-        overtimeHours: 0,
-        doubleTimeHours: 0
-      };
-      updatedEntries.push(newEntry);
+      updatedEntries.push(draftEntry);
     }
 
     const updatedTimesheet: Timesheet = {
@@ -737,6 +746,19 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
 
                   {/* List of logged entries */}
                   <h4 style={{ fontSize: '1rem', marginBottom: '12px' }}>Daily Hours Log</h4>
+                  {(() => {
+                    const sheetIssues = validateTimesheetEntries(activeTimesheet.entries);
+                    const errors = sheetIssues.filter(issue => issue.severity === 'error').length;
+                    const warnings = sheetIssues.filter(issue => issue.severity === 'warning').length;
+                    if (sheetIssues.length === 0) return null;
+                    return (
+                      <div style={{ background: errors > 0 ? 'var(--color-error-bg)' : 'var(--color-warning-bg)', border: `1px solid ${errors > 0 ? 'var(--color-error)' : 'rgba(245, 158, 11, 0.35)'}`, borderRadius: '8px', padding: '10px 14px', marginBottom: '14px', fontSize: '0.82rem' }}>
+                        <strong style={{ color: errors > 0 ? 'var(--color-error)' : 'var(--color-warning)' }}>
+                          Timesheet validation: {errors} error{errors === 1 ? '' : 's'}, {warnings} warning{warnings === 1 ? '' : 's'}
+                        </strong>
+                      </div>
+                    );
+                  })()}
                   {activeTimesheet.entries.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '30px', border: '1px dashed var(--border-color)', borderRadius: '8px', color: 'var(--text-muted)' }}>
                       No time entries logged for this period yet.
@@ -744,10 +766,14 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                       {activeTimesheet.entries.map((entry) => (
-                        <div 
-                          key={entry.id} 
+                        (() => {
+                          const entryIssues = validateTimesheetEntries(activeTimesheet.entries).filter(issue => issue.entryId === entry.id);
+                          const hasEntryErrors = entryIssues.some(issue => issue.severity === 'error');
+                          return (
+                        <div
+                          key={entry.id}
                           className="time-row-card"
-                          style={{ borderLeft: entry.isClockedIn ? '4px solid var(--color-success)' : '1px solid var(--border-color)' }}
+                          style={{ borderLeft: entry.isClockedIn ? '4px solid var(--color-success)' : hasEntryErrors ? '4px solid var(--color-error)' : '1px solid var(--border-color)' }}
                         >
                           <div className="time-row-header">
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -804,6 +830,16 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
                             </p>
                           )}
 
+                          {entryIssues.length > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.76rem' }}>
+                              {entryIssues.map((issue, issueIndex) => (
+                                <span key={`${entry.id}-${issueIndex}`} style={{ color: issue.severity === 'error' ? 'var(--color-error)' : 'var(--color-warning)' }}>
+                                  {issue.severity === 'error' ? 'Error' : 'Warning'}: {issue.message}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
                           {/* Show GPS info logs */}
                           {(entry.clockInGPS || entry.clockOutGPS) && (
                             <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '8px' }}>
@@ -830,6 +866,8 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
                             </div>
                           )}
                         </div>
+                          );
+                        })()
                       ))}
                     </div>
                   )}
@@ -839,8 +877,15 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
                     <div style={{ marginTop: '30px', paddingTop: '20px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end' }}>
                       <button 
                         className="btn btn-success"
-                        disabled={activeTimesheet.entries.length === 0 || isClockedIn}
-                        onClick={() => onSubmitTimesheet(activeTimesheet.id)}
+                        disabled={activeTimesheet.entries.length === 0 || isClockedIn || hasBlockingValidationIssues(activeTimesheet.entries)}
+                        onClick={() => {
+                          const blockingIssues = validateTimesheetEntries(activeTimesheet.entries).filter(issue => issue.severity === 'error');
+                          if (blockingIssues.length > 0) {
+                            alert(`Fix ${blockingIssues.length} validation error${blockingIssues.length === 1 ? '' : 's'} before submitting.`);
+                            return;
+                          }
+                          onSubmitTimesheet(activeTimesheet.id);
+                        }}
                       >
                         <CheckCircle size={16} /> Submit Timesheet to Client
                       </button>

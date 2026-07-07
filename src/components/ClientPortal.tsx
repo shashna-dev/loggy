@@ -6,7 +6,9 @@ import {
   getMapLink,
   getTimesheetStatusClass,
   getTimesheetStatusLabel,
-  isSubmittedForClientStatus
+  hasBlockingValidationIssues,
+  isSubmittedForClientStatus,
+  validateTimesheetEntries
 } from '../utils';
 import { importedRowsToTimeEntries, type ImportedTimesheetRow } from '../timesheetImport';
 import { TimesheetImportModal } from './TimesheetImportModal';
@@ -65,6 +67,11 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
   const pendingCount = pendingTimesheets.length;
   
   const handleApprove = (id: string) => {
+    const timesheet = timesheets.find(ts => ts.id === id);
+    if (timesheet && hasBlockingValidationIssues(timesheet.entries)) {
+      alert('This timesheet has validation errors. Request changes before approving.');
+      return;
+    }
     if (confirm('Are you sure you want to approve this timesheet? It will move to agency review before invoicing.')) {
       onApproveTimesheet(id);
       setViewingTimesheet(null);
@@ -231,6 +238,9 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
               const gpsChecks = viewingTimesheet.entries.map(entry => evaluateEntryGps(entry, pl));
               const hasGpsEntries = gpsChecks.some(check => check.status !== 'missing');
               const needsGpsReview = gpsChecks.some(check => check.status === 'warning');
+              const validationIssues = validateTimesheetEntries(viewingTimesheet.entries);
+              const validationErrors = validationIssues.filter(issue => issue.severity === 'error').length;
+              const validationWarnings = validationIssues.filter(issue => issue.severity === 'warning').length;
 
               return (
                 <div>
@@ -265,6 +275,17 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                       </p>
                   </div>
 
+                  {validationIssues.length > 0 && (
+                    <div style={{ background: validationErrors > 0 ? 'var(--color-error-bg)' : 'var(--color-warning-bg)', border: `1px solid ${validationErrors > 0 ? 'var(--color-error)' : 'rgba(245, 158, 11, 0.35)'}`, borderRadius: '8px', padding: '12px 16px', marginBottom: '20px' }}>
+                      <h4 style={{ color: validationErrors > 0 ? 'var(--color-error)' : 'var(--color-warning)', fontSize: '0.9rem', marginBottom: '4px' }}>
+                        Validation: {validationErrors} error{validationErrors === 1 ? '' : 's'}, {validationWarnings} warning{validationWarnings === 1 ? '' : 's'}
+                      </h4>
+                      <p style={{ color: 'var(--text-sub)', fontSize: '0.75rem' }}>
+                        Errors must be corrected before this timesheet can be approved.
+                      </p>
+                    </div>
+                  )}
+
                   {/* Calculations summary */}
                   <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '20px' }}>
                     <div style={{ flex: 1, minWidth: '120px', background: 'rgba(255, 255, 255, 0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
@@ -284,6 +305,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '24px' }}>
                     {viewingTimesheet.entries.map(entry => {
                       const gpsCheck = evaluateEntryGps(entry, pl);
+                      const entryIssues = validationIssues.filter(issue => issue.entryId === entry.id);
                       const gpsBadgeClass = gpsCheck.status === 'verified'
                         ? 'badge-approved'
                         : gpsCheck.status === 'warning'
@@ -309,6 +331,16 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                             {gpsCheck.label}
                           </span>
                         </div>
+
+                        {entryIssues.length > 0 && (
+                          <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '3px', fontSize: '0.74rem' }}>
+                            {entryIssues.map((issue, issueIndex) => (
+                              <span key={`${entry.id}-${issueIndex}`} style={{ color: issue.severity === 'error' ? 'var(--color-error)' : 'var(--color-warning)' }}>
+                                {issue.severity === 'error' ? 'Error' : 'Warning'}: {issue.message}
+                              </span>
+                            ))}
+                          </div>
+                        )}
 
                         {/* GPS Log visualization */}
                         {(entry.clockInGPS || entry.clockOutGPS) && (

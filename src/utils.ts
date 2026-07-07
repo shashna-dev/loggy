@@ -50,6 +50,93 @@ export function isRevenueRecognizedStatus(status: TimesheetStatus): boolean {
   return ['agency_approved', 'invoiced', 'paid', 'payroll_closed'].includes(status);
 }
 
+export type ValidationSeverity = 'error' | 'warning';
+
+export interface TimeEntryValidationIssue {
+  entryId: string;
+  severity: ValidationSeverity;
+  message: string;
+}
+
+export function validateTimeEntry(entry: TimeEntry): TimeEntryValidationIssue[] {
+  const issues: TimeEntryValidationIssue[] = [];
+
+  if (!entry.date) {
+    issues.push({ entryId: entry.id, severity: 'error', message: 'Shift date is required.' });
+  }
+
+  if (!entry.startTime) {
+    issues.push({ entryId: entry.id, severity: 'error', message: 'Start time is required.' });
+  }
+
+  if (!entry.endTime) {
+    if (!entry.isClockedIn) {
+      issues.push({ entryId: entry.id, severity: 'error', message: 'End time is required before submitting.' });
+    }
+    return issues;
+  }
+
+  const start = timeToMinutes(entry.startTime);
+  const end = timeToMinutes(entry.endTime);
+  const grossMinutes = end - start;
+
+  if (end <= start) {
+    issues.push({ entryId: entry.id, severity: 'error', message: 'End time must be after start time.' });
+    return issues;
+  }
+
+  if (entry.breakMinutes < 0) {
+    issues.push({ entryId: entry.id, severity: 'error', message: 'Break minutes cannot be negative.' });
+  }
+
+  if (entry.breakMinutes >= grossMinutes) {
+    issues.push({ entryId: entry.id, severity: 'error', message: 'Break cannot be equal to or longer than the shift.' });
+  }
+
+  const netMinutes = grossMinutes - Math.max(0, entry.breakMinutes);
+  if (netMinutes > 16 * 60) {
+    issues.push({ entryId: entry.id, severity: 'error', message: 'Shift is longer than 16 hours. Review before saving.' });
+  } else if (netMinutes > 12 * 60) {
+    issues.push({ entryId: entry.id, severity: 'warning', message: 'Shift is longer than 12 hours.' });
+  }
+
+  if (netMinutes >= 5 * 60 && entry.breakMinutes === 0) {
+    issues.push({ entryId: entry.id, severity: 'warning', message: 'No unpaid break recorded for a 5+ hour shift.' });
+  }
+
+  return issues;
+}
+
+export function validateTimesheetEntries(entries: TimeEntry[]): TimeEntryValidationIssue[] {
+  const issues = entries.flatMap(validateTimeEntry);
+  const completedEntries = entries
+    .filter(entry => entry.date && entry.startTime && entry.endTime && timeToMinutes(entry.endTime) > timeToMinutes(entry.startTime))
+    .map(entry => ({
+      entry,
+      start: timeToMinutes(entry.startTime),
+      end: timeToMinutes(entry.endTime)
+    }))
+    .sort((a, b) => `${a.entry.date}-${a.start}`.localeCompare(`${b.entry.date}-${b.start}`));
+
+  for (let i = 1; i < completedEntries.length; i += 1) {
+    const previous = completedEntries[i - 1];
+    const current = completedEntries[i];
+    if (previous.entry.date === current.entry.date && current.start < previous.end) {
+      issues.push({
+        entryId: current.entry.id,
+        severity: 'error',
+        message: `Overlaps with another shift on ${current.entry.date}.`
+      });
+    }
+  }
+
+  return issues;
+}
+
+export function hasBlockingValidationIssues(entries: TimeEntry[]): boolean {
+  return validateTimesheetEntries(entries).some(issue => issue.severity === 'error');
+}
+
 // Convert "08:30" to 510 minutes
 export function timeToMinutes(timeStr: string): number {
   if (!timeStr) return 0;
