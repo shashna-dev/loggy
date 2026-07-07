@@ -72,7 +72,15 @@ export interface TimeEntry {
   isClockedIn?: boolean; // active logging state helper
 }
 
-export type TimesheetStatus = 'draft' | 'pending_approval' | 'approved' | 'rejected';
+export type TimesheetStatus =
+  | 'draft'
+  | 'submitted'
+  | 'client_approved'
+  | 'agency_approved'
+  | 'invoiced'
+  | 'paid'
+  | 'payroll_closed'
+  | 'rejected';
 
 export interface Timesheet {
   id: string;

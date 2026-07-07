@@ -201,7 +201,7 @@ export const mockTimesheets: Timesheet[] = [
     cycleStartDate: '2026-07-03',
     cycleEndDate: '2026-07-03',
     payCycle: 'daily',
-    status: 'approved',
+    status: 'agency_approved',
     submittedAt: '2026-07-03T18:30:00Z',
     totalHours: 10.0,
     subtotalPay: 385.00, // 8h * $35 (reg) + 2h * $52.5 (1.5x OT) = $280 + $105 = $385

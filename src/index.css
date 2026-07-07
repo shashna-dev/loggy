@@ -432,7 +432,19 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-sub);
 }
 
+.badge-submitted {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+}
+
 .badge-pending {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.badge-client-approved {
   background: var(--color-warning-bg);
   color: var(--color-warning);
   border: 1px solid rgba(245, 158, 11, 0.2);
@@ -442,6 +454,25 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--color-success-bg);
   color: var(--color-success);
   border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.badge-agency-approved,
+.badge-invoiced {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.badge-paid {
+  background: rgba(139, 92, 246, 0.12);
+  color: #A78BFA;
+  border: 1px solid rgba(139, 92, 246, 0.28);
+}
+
+.badge-payroll-closed {
+  background: rgba(148, 163, 184, 0.12);
+  color: #CBD5E1;
+  border: 1px solid rgba(148, 163, 184, 0.24);
 }
 
 .badge-rejected {

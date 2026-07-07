@@ -1,4 +1,54 @@
-import type { GPSLocation, TimeEntry, Placement, CanadianProvince } from './types';
+import type { GPSLocation, TimeEntry, Placement, CanadianProvince, TimesheetStatus } from './types';
+
+export const timesheetStatusLabels: Record<TimesheetStatus, string> = {
+  draft: 'Draft',
+  submitted: 'Submitted',
+  client_approved: 'Client Approved',
+  agency_approved: 'Agency Approved',
+  invoiced: 'Invoiced',
+  paid: 'Paid',
+  payroll_closed: 'Payroll Closed',
+  rejected: 'Rejected'
+};
+
+export const timesheetStatusClasses: Record<TimesheetStatus, string> = {
+  draft: 'badge-draft',
+  submitted: 'badge-submitted',
+  client_approved: 'badge-client-approved',
+  agency_approved: 'badge-agency-approved',
+  invoiced: 'badge-invoiced',
+  paid: 'badge-paid',
+  payroll_closed: 'badge-payroll-closed',
+  rejected: 'badge-rejected'
+};
+
+export function getTimesheetStatusLabel(status: TimesheetStatus): string {
+  return timesheetStatusLabels[status];
+}
+
+export function getTimesheetStatusClass(status: TimesheetStatus): string {
+  return timesheetStatusClasses[status];
+}
+
+export function isWorkerEditableStatus(status: TimesheetStatus): boolean {
+  return status === 'draft' || status === 'rejected';
+}
+
+export function isSubmittedForClientStatus(status: TimesheetStatus): boolean {
+  return status === 'submitted';
+}
+
+export function isAgencyApprovalStatus(status: TimesheetStatus): boolean {
+  return status === 'client_approved';
+}
+
+export function isReadyToInvoiceStatus(status: TimesheetStatus): boolean {
+  return status === 'agency_approved';
+}
+
+export function isRevenueRecognizedStatus(status: TimesheetStatus): boolean {
+  return ['agency_approved', 'invoiced', 'paid', 'payroll_closed'].includes(status);
+}
 
 // Convert "08:30" to 510 minutes
 export function timeToMinutes(timeStr: string): number {

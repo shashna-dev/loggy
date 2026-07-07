@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FileText } from 'lucide-react';
+import { FileText, Trash2 } from 'lucide-react';
 import { parseTimesheetText, type ImportedTimesheetRow } from '../timesheetImport';
 
 interface TimesheetImportModalProps {
@@ -59,6 +59,27 @@ export const TimesheetImportModal: React.FC<TimesheetImportModalProps> = ({
     setError(parsedRows.length === 0 ? 'No complete shifts were found in the pasted text.' : '');
   };
 
+  const handleRowChange = (
+    rowId: string,
+    field: keyof Pick<ImportedTimesheetRow, 'workerName' | 'date' | 'startTime' | 'endTime' | 'breakMinutes'>,
+    value: string
+  ) => {
+    setRows(currentRows => currentRows.map(row => {
+      if (row.id !== rowId) return row;
+      return {
+        ...row,
+        [field]: field === 'breakMinutes' ? Math.max(0, Number(value) || 0) : value,
+        confidence: row.confidence === 'high' ? 'medium' : row.confidence
+      };
+    }));
+  };
+
+  const handleRemoveRow = (rowId: string) => {
+    setRows(currentRows => currentRows.filter(row => row.id !== rowId));
+  };
+
+  const invalidRowCount = rows.filter(row => !row.date || !row.startTime || !row.endTime).length;
+
   return (
     <div className="modal-overlay">
       <div className="modal-content" style={{ maxWidth: '860px' }}>
@@ -116,6 +137,11 @@ export const TimesheetImportModal: React.FC<TimesheetImportModalProps> = ({
           )}
 
           <h4 style={{ fontSize: '0.95rem', marginBottom: '10px' }}>Detected Shifts</h4>
+          {rows.length > 0 && (
+            <p style={{ color: 'var(--text-sub)', fontSize: '0.8rem', marginBottom: '10px' }}>
+              Review and correct extracted values before saving. Required fields are date, start time, and end time.
+            </p>
+          )}
           {rows.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '24px', border: '1px dashed var(--border-color)', borderRadius: '8px', color: 'var(--text-muted)' }}>
               No shifts detected yet.
@@ -131,20 +157,72 @@ export const TimesheetImportModal: React.FC<TimesheetImportModalProps> = ({
                     <th>End</th>
                     <th>Break</th>
                     <th>Confidence</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map(row => (
                     <tr key={row.id}>
-                      <td>{row.workerName || 'Not found'}</td>
-                      <td>{row.date}</td>
-                      <td>{row.startTime}</td>
-                      <td>{row.endTime}</td>
-                      <td>{row.breakMinutes}m</td>
+                      <td>
+                        <input
+                          className="form-control"
+                          value={row.workerName || ''}
+                          onChange={event => handleRowChange(row.id, 'workerName', event.target.value)}
+                          placeholder="Optional"
+                          style={{ minWidth: '150px', padding: '7px 9px', fontSize: '0.78rem' }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="form-control"
+                          type="date"
+                          value={row.date}
+                          onChange={event => handleRowChange(row.id, 'date', event.target.value)}
+                          style={{ minWidth: '136px', padding: '7px 9px', fontSize: '0.78rem' }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="form-control"
+                          type="time"
+                          value={row.startTime}
+                          onChange={event => handleRowChange(row.id, 'startTime', event.target.value)}
+                          style={{ minWidth: '104px', padding: '7px 9px', fontSize: '0.78rem' }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="form-control"
+                          type="time"
+                          value={row.endTime}
+                          onChange={event => handleRowChange(row.id, 'endTime', event.target.value)}
+                          style={{ minWidth: '104px', padding: '7px 9px', fontSize: '0.78rem' }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="form-control"
+                          type="number"
+                          min={0}
+                          value={row.breakMinutes}
+                          onChange={event => handleRowChange(row.id, 'breakMinutes', event.target.value)}
+                          style={{ minWidth: '86px', padding: '7px 9px', fontSize: '0.78rem' }}
+                        />
+                      </td>
                       <td>
                         <span className={`badge ${row.confidence === 'high' ? 'badge-approved' : row.confidence === 'medium' ? 'badge-pending' : 'badge-draft'}`}>
                           {row.confidence}
                         </span>
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-danger"
+                          onClick={() => handleRemoveRow(row.id)}
+                          style={{ padding: '6px 8px' }}
+                          title="Remove detected row"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -154,8 +232,13 @@ export const TimesheetImportModal: React.FC<TimesheetImportModalProps> = ({
           )}
         </div>
         <div className="modal-footer">
+          {invalidRowCount > 0 && (
+            <span style={{ color: 'var(--color-warning)', fontSize: '0.8rem', marginRight: 'auto' }}>
+              {invalidRowCount} row{invalidRowCount === 1 ? '' : 's'} missing required fields
+            </span>
+          )}
           <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn btn-primary" disabled={rows.length === 0 || processing} onClick={() => onApply(rows)}>
+          <button type="button" className="btn btn-primary" disabled={rows.length === 0 || processing || invalidRowCount > 0} onClick={() => onApply(rows)}>
             Add {rows.length || ''} Shift{rows.length === 1 ? '' : 's'} to Timesheet
           </button>
         </div>

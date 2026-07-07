@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 import type { Placement, Worker, Timesheet, Client } from '../types';
-import { calculateTimesheetTotals, evaluateEntryGps, getMapLink } from '../utils';
+import {
+  calculateTimesheetTotals,
+  evaluateEntryGps,
+  getMapLink,
+  getTimesheetStatusClass,
+  getTimesheetStatusLabel,
+  isSubmittedForClientStatus
+} from '../utils';
 import { importedRowsToTimeEntries, type ImportedTimesheetRow } from '../timesheetImport';
 import { TimesheetImportModal } from './TimesheetImportModal';
 import { 
@@ -44,8 +51,8 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
   const clientTimesheets = timesheets.filter(t => placementIds.includes(t.placementId));
   
   // Sort timesheets
-  const pendingTimesheets = clientTimesheets.filter(t => t.status === 'pending_approval');
-  const pastTimesheets = clientTimesheets.filter(t => t.status !== 'pending_approval');
+  const pendingTimesheets = clientTimesheets.filter(t => isSubmittedForClientStatus(t.status));
+  const pastTimesheets = clientTimesheets.filter(t => !isSubmittedForClientStatus(t.status));
 
   // Active viewing timesheet state
   const [viewingTimesheet, setViewingTimesheet] = useState<Timesheet | null>(null);
@@ -58,7 +65,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
   const pendingCount = pendingTimesheets.length;
   
   const handleApprove = (id: string) => {
-    if (confirm('Are you sure you want to approve this timesheet? Approved timesheets will be locked and billed.')) {
+    if (confirm('Are you sure you want to approve this timesheet? It will move to agency review before invoicing.')) {
       onApproveTimesheet(id);
       setViewingTimesheet(null);
     }
@@ -383,7 +390,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                       <td>{ts.totalHours} hrs</td>
                       <td>CAD ${ts.subtotalBill.toFixed(2)}</td>
                       <td>
-                        <span className={`badge badge-${ts.status}`}>{ts.status}</span>
+                        <span className={`badge ${getTimesheetStatusClass(ts.status)}`}>{getTimesheetStatusLabel(ts.status)}</span>
                       </td>
                     </tr>
                   );

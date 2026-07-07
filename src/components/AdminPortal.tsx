@@ -1,6 +1,16 @@
 import React, { useState } from 'react';
 import type { Worker, Client, Placement, Timesheet, Invoice, CanadianProvince, PayCycle } from '../types';
-import { calculateTimesheetTotals, evaluateEntryGps, getProvinceTax, getMapLink } from '../utils';
+import {
+  calculateTimesheetTotals,
+  evaluateEntryGps,
+  getProvinceTax,
+  getMapLink,
+  getTimesheetStatusClass,
+  getTimesheetStatusLabel,
+  isAgencyApprovalStatus,
+  isReadyToInvoiceStatus,
+  isRevenueRecognizedStatus
+} from '../utils';
 import { importedRowsToTimeEntries, type ImportedTimesheetRow } from '../timesheetImport';
 import { TimesheetImportModal } from './TimesheetImportModal';
 import { ReportsAnalytics } from './ReportsAnalytics';
@@ -28,6 +38,7 @@ interface AdminPortalProps {
   onSaveTimesheet: (ts: Timesheet) => void;
   onGenerateInvoice: (clientId: string, tsIds: string[]) => void;
   onUpdateInvoiceStatus: (id: string, status: 'pending' | 'paid') => void;
+  onClosePayroll: (timesheetId: string) => void;
 }
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({
@@ -41,7 +52,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onAddPlacement,
   onSaveTimesheet,
   onGenerateInvoice,
-  onUpdateInvoiceStatus
+  onUpdateInvoiceStatus,
+  onClosePayroll
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'clients' | 'workers' | 'placements' | 'approvals' | 'invoices' | 'reports'>('overview');
 
@@ -80,11 +92,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   // Invoicing selection state
   const [selectedTimesheets, setSelectedTimesheets] = useState<string[]>([]);
   const [invoiceClientId, setInvoiceClientId] = useState('');
+  const [selectedApprovalIds, setSelectedApprovalIds] = useState<string[]>([]);
   const [importTarget, setImportTarget] = useState<{ timesheet: Timesheet; placement: Placement; workerName?: string; clientName?: string } | null>(null);
 
   // 1. Calculations for Financial Dashboard
-  const approvedTimesheets = timesheets.filter(t => t.status === 'approved');
-  const pendingTimesheets = timesheets.filter(t => t.status === 'pending_approval');
+  const approvedTimesheets = timesheets.filter(t => isRevenueRecognizedStatus(t.status));
+  const pendingTimesheets = timesheets.filter(t => isAgencyApprovalStatus(t.status));
   
   // Total billing and pay based on APPROVED timesheets
   let totalBilled = 0;
@@ -191,6 +204,41 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setActiveTab('invoices');
   };
 
+  const toggleApprovalSelection = (tsId: string) => {
+    setSelectedApprovalIds(prev =>
+      prev.includes(tsId) ? prev.filter(id => id !== tsId) : [...prev, tsId]
+    );
+  };
+
+  const handleSelectAllPendingApprovals = () => {
+    const pendingIds = pendingTimesheets.map(ts => ts.id);
+    const allSelected = pendingIds.length > 0 && pendingIds.every(id => selectedApprovalIds.includes(id));
+    setSelectedApprovalIds(allSelected ? [] : pendingIds);
+  };
+
+  const handleBulkApprove = () => {
+    const selectedPending = pendingTimesheets.filter(ts => selectedApprovalIds.includes(ts.id));
+    if (selectedPending.length === 0) return;
+    if (!confirm(`Agency approve ${selectedPending.length} selected timesheet${selectedPending.length === 1 ? '' : 's'} for invoicing?`)) return;
+
+    selectedPending.forEach(ts => onSaveTimesheet({ ...ts, status: 'agency_approved' as const }));
+    setSelectedApprovalIds([]);
+  };
+
+  const handleBulkReject = () => {
+    const selectedPending = pendingTimesheets.filter(ts => selectedApprovalIds.includes(ts.id));
+    if (selectedPending.length === 0) return;
+    const reason = prompt(`Enter one change request note for ${selectedPending.length} selected timesheet${selectedPending.length === 1 ? '' : 's'}:`);
+    if (!reason?.trim()) return;
+
+    selectedPending.forEach(ts => onSaveTimesheet({
+      ...ts,
+      status: 'rejected' as const,
+      clientFeedback: reason.trim()
+    }));
+    setSelectedApprovalIds([]);
+  };
+
   const handleApplyImportedRows = (rows: ImportedTimesheetRow[]) => {
     if (!importTarget) return;
 
@@ -243,7 +291,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <div className="metric-icon-wrap"><TrendingUp size={18} /></div>
               </div>
               <div className="metric-value">CAD ${(totalBilled).toFixed(2)}</div>
-              <p className="metric-subtext">Cumulative from approved hours</p>
+              <p className="metric-subtext">Cumulative from agency-approved lifecycle stages</p>
             </div>
 
             <div className="glass-card metric-card">
@@ -497,16 +545,36 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             Approvals Audit Center
           </h3>
           <p style={{ color: 'var(--text-sub)', fontSize: '0.9rem', marginBottom: '20px' }}>
-            As Agency Admin, you can review submitted timesheets and override approval decisions to ensure timely billing and payroll cycles.
+                    As Agency Admin, you can review client-approved timesheets, agency approve them for invoicing, or send them back for corrections.
           </p>
 
-          {timesheets.filter(t => t.status === 'pending_approval').length === 0 ? (
+          {pendingTimesheets.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
               No timesheets are currently pending manager review.
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {timesheets.filter(t => t.status === 'pending_approval').map(ts => {
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', padding: '12px 14px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'rgba(255,255,255,0.02)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)', fontSize: '0.85rem', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={pendingTimesheets.length > 0 && pendingTimesheets.every(ts => selectedApprovalIds.includes(ts.id))}
+                    onChange={handleSelectAllPendingApprovals}
+                    style={{ accentColor: 'var(--primary)' }}
+                  />
+                  Select all pending ({selectedApprovalIds.filter(id => pendingTimesheets.some(ts => ts.id === id)).length}/{pendingTimesheets.length})
+                </label>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button className="btn btn-danger" onClick={handleBulkReject} disabled={selectedApprovalIds.length === 0} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                    Bulk Reject
+                  </button>
+                  <button className="btn btn-success" onClick={handleBulkApprove} disabled={selectedApprovalIds.length === 0} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                    Bulk Agency Approve
+                  </button>
+                </div>
+              </div>
+
+              {pendingTimesheets.map(ts => {
                 const pl = placements.find(p => p.id === ts.placementId);
                 const wr = pl ? workers.find(w => w.id === pl.workerId) : undefined;
                 const cl = pl ? clients.find(c => c.id === pl.clientId) : undefined;
@@ -517,8 +585,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 const needsGpsReview = gpsChecks.some(check => check.status === 'warning');
 
                 const handleAdminApprove = () => {
-                  if (confirm('Approve this timesheet on behalf of client manager?')) {
-                    const updated = { ...ts, status: 'approved' as const };
+                  if (confirm('Agency approve this timesheet for invoicing?')) {
+                    const updated = { ...ts, status: 'agency_approved' as const };
                     onSaveTimesheet(updated);
                   }
                 };
@@ -532,18 +600,27 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 return (
                   <div key={ts.id} className="time-row-card" style={{ border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.01)', padding: '20px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '12px', marginBottom: '12px' }}>
-                      <div>
-                        <h4 style={{ fontSize: '1.1rem' }}>{wr.name} placed @ {cl.companyName}</h4>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-sub)' }}>
-                          Role: {pl.roleTitle} | Period: {ts.cycleStartDate} to {ts.cycleEndDate} ({ts.payCycle})
-                        </span>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedApprovalIds.includes(ts.id)}
+                          onChange={() => toggleApprovalSelection(ts.id)}
+                          style={{ accentColor: 'var(--primary)', marginTop: '5px' }}
+                          aria-label={`Select ${wr.name} timesheet`}
+                        />
+                        <div>
+                          <h4 style={{ fontSize: '1.1rem' }}>{wr.name} placed @ {cl.companyName}</h4>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-sub)' }}>
+                            Role: {pl.roleTitle} | Period: {ts.cycleStartDate} to {ts.cycleEndDate} ({ts.payCycle})
+                          </span>
+                        </div>
                       </div>
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         <button className="btn btn-secondary" onClick={() => setImportTarget({ timesheet: ts, placement: pl, workerName: wr.name, clientName: cl.companyName })} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
                           <Upload size={14} /> Import
                         </button>
                         <button className="btn btn-danger" onClick={handleAdminReject} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>Reject</button>
-                        <button className="btn btn-success" onClick={handleAdminApprove} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>Approve</button>
+                        <button className="btn btn-success" onClick={handleAdminApprove} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>Agency Approve</button>
                       </div>
                     </div>
 
@@ -632,20 +709,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             {invoiceClientId && (
               <div>
                 <h4 style={{ fontSize: '0.85rem', color: 'var(--text-sub)', marginBottom: '8px' }}>
-                  Unbilled Approved Timesheets:
+                  Ready to Invoice Timesheets:
                 </h4>
                 
                 {(() => {
-                  const unbilledSheets = approvedTimesheets.filter(ts => {
+                  const unbilledSheets = timesheets.filter(ts => {
                     const pl = placements.find(p => p.id === ts.placementId);
                     const isClientMatch = pl?.clientId === invoiceClientId;
-                    // Check if already in an invoice
+                    const isReadyToInvoice = isReadyToInvoiceStatus(ts.status);
                     const isAlreadyInvoiced = invoices.some(inv => inv.timesheetIds.includes(ts.id));
-                    return isClientMatch && !isAlreadyInvoiced;
+                    return isClientMatch && isReadyToInvoice && !isAlreadyInvoiced;
                   });
 
                   if (unbilledSheets.length === 0) {
-                    return <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No unbilled approved timesheets for this client.</p>;
+                    return <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No agency-approved timesheets are ready to invoice for this client.</p>;
                   }
 
                   return (
@@ -714,6 +791,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 {invoices.map(inv => {
                   const cl = clients.find(c => c.id === inv.clientId);
                   const provTax = cl ? getProvinceTax(cl.province) : { gstHstRate: 0.05, label: '5% GST' };
+                  const relatedTimesheets = timesheets.filter(ts => inv.timesheetIds.includes(ts.id));
 
                   return (
                     <div key={inv.id} style={{ border: '1px solid var(--border-color)', borderRadius: '12px', background: 'rgba(0,0,0,0.15)', overflow: 'hidden' }}>
@@ -772,6 +850,34 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                             <strong style={{ color: 'var(--primary-hover)' }}>CAD ${inv.total.toFixed(2)}</strong>
                           </div>
                         </div>
+
+                        {relatedTimesheets.length > 0 && (
+                          <div style={{ borderTop: '1px dashed var(--border-color)', marginTop: '14px', paddingTop: '12px' }}>
+                            <h4 style={{ fontSize: '0.9rem', marginBottom: '8px' }}>Lifecycle Status</h4>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {relatedTimesheets.map(ts => {
+                                const pl = placements.find(p => p.id === ts.placementId);
+                                const wr = pl ? workers.find(w => w.id === pl.workerId) : undefined;
+                                return (
+                                  <div key={ts.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '8px 10px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'rgba(255,255,255,0.02)' }}>
+                                    <div>
+                                      <strong>{wr?.name || 'Worker'}</strong>
+                                      <div style={{ color: 'var(--text-sub)', fontSize: '0.75rem' }}>{ts.cycleStartDate} to {ts.cycleEndDate}</div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <span className={`badge ${getTimesheetStatusClass(ts.status)}`}>{getTimesheetStatusLabel(ts.status)}</span>
+                                      {inv.status === 'paid' && ts.status === 'paid' && (
+                                        <button className="btn btn-secondary" onClick={() => onClosePayroll(ts.id)} style={{ padding: '4px 8px', fontSize: '0.72rem' }}>
+                                          Close Payroll
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

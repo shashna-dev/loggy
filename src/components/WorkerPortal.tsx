@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import type { Placement, Client, Timesheet, TimeEntry, GPSLocation } from '../types';
-import { calculateTimesheetTotals, getMapLink } from '../utils';
+import {
+  calculateTimesheetTotals,
+  getMapLink,
+  getTimesheetStatusClass,
+  getTimesheetStatusLabel,
+  isWorkerEditableStatus
+} from '../utils';
 import { parseTimesheetText, type ImportedTimesheetRow } from '../timesheetImport';
 import { gpsCoordinates } from '../mockData';
 import { 
@@ -47,17 +53,17 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
   // Find timesheets for the selected placement
   const placementTimesheets = timesheets.filter(t => t.placementId === selectedPlacementId);
   
-  // Sort timesheets: draft/pending first, then by date desc
+  // Sort timesheets: editable first, then by date desc
   const sortedTimesheets = [...placementTimesheets].sort((a, b) => {
-    if (a.status === 'draft' || a.status === 'rejected') return -1;
-    if (b.status === 'draft' || b.status === 'rejected') return 1;
+    if (isWorkerEditableStatus(a.status)) return -1;
+    if (isWorkerEditableStatus(b.status)) return 1;
     return new Date(b.cycleStartDate).getTime() - new Date(a.cycleStartDate).getTime();
   });
 
   const [activeTimesheet, setActiveTimesheet] = useState<Timesheet | undefined>(undefined);
   
   useEffect(() => {
-    // Select the first draft or rejected timesheet, or the most recent one
+    // Select the first editable timesheet, or the most recent one
     const current = sortedTimesheets[0];
     setActiveTimesheet(current);
   }, [selectedPlacementId, timesheets]);
@@ -555,7 +561,7 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
                 Your current location will be logged for agency and client verification.
               </p>
 
-              {activeTimesheet && (activeTimesheet.status === 'draft' || activeTimesheet.status === 'rejected') ? (
+              {activeTimesheet && isWorkerEditableStatus(activeTimesheet.status) ? (
                 <>
                   <div className={`status-ring ${isClockedIn ? 'active' : ''}`}>
                     <div className="pulse-ring"></div>
@@ -603,7 +609,7 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
                   <AlertTriangle size={32} style={{ color: 'var(--text-muted)', margin: '0 auto 12px' }} />
                   <p style={{ fontSize: '0.85rem', color: 'var(--text-sub)' }}>
                     {activeTimesheet 
-                      ? 'No active draft timesheet. Current period timesheet is submitted and awaiting approval.'
+                      ? `This timesheet is ${getTimesheetStatusLabel(activeTimesheet.status)} and is locked for worker edits.`
                       : 'Please start a new timesheet period below to begin clocking in.'}
                   </p>
                   {!activeTimesheet && (
@@ -671,11 +677,11 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                   {activeTimesheet && (
-                    <span className={`badge badge-${activeTimesheet.status}`}>
-                      {activeTimesheet.status}
+                    <span className={`badge ${getTimesheetStatusClass(activeTimesheet.status)}`}>
+                      {getTimesheetStatusLabel(activeTimesheet.status)}
                     </span>
                   )}
-                  {activeTimesheet && (activeTimesheet.status === 'draft' || activeTimesheet.status === 'rejected') && (
+                  {activeTimesheet && isWorkerEditableStatus(activeTimesheet.status) && (
                     <>
                       <button 
                         className="btn btn-secondary" 
@@ -753,7 +759,7 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
                             </div>
                             
                             {/* Entry Actions */}
-                            {(!entry.isClockedIn && (activeTimesheet.status === 'draft' || activeTimesheet.status === 'rejected')) && (
+                            {(!entry.isClockedIn && isWorkerEditableStatus(activeTimesheet.status)) && (
                               <div style={{ display: 'flex', gap: '8px' }}>
                                 <button 
                                   onClick={() => openEditModal(entry)} 
@@ -829,14 +835,14 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
                   )}
 
                   {/* Submission Flow */}
-                  {(activeTimesheet.status === 'draft' || activeTimesheet.status === 'rejected') && (
+                  {isWorkerEditableStatus(activeTimesheet.status) && (
                     <div style={{ marginTop: '30px', paddingTop: '20px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'flex-end' }}>
                       <button 
                         className="btn btn-success"
                         disabled={activeTimesheet.entries.length === 0 || isClockedIn}
                         onClick={() => onSubmitTimesheet(activeTimesheet.id)}
                       >
-                        <CheckCircle size={16} /> Submit Weekly Timesheet to Client
+                        <CheckCircle size={16} /> Submit Timesheet to Client
                       </button>
                     </div>
                   )}
@@ -880,7 +886,7 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
                           Hours: {ts.totalHours}h | Earnings: CAD ${ts.subtotalPay.toFixed(2)}
                         </div>
                       </div>
-                      <span className={`badge badge-${ts.status}`}>{ts.status}</span>
+                      <span className={`badge ${getTimesheetStatusClass(ts.status)}`}>{getTimesheetStatusLabel(ts.status)}</span>
                     </div>
                   ))}
                 </div>

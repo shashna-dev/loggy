@@ -1,5 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import type { Client, Invoice, Placement, Timesheet, Worker } from '../types';
+import {
+  getTimesheetStatusClass,
+  getTimesheetStatusLabel,
+  isAgencyApprovalStatus,
+  isRevenueRecognizedStatus
+} from '../utils';
 
 type ReportPeriod = 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom';
 
@@ -124,8 +130,8 @@ export const ReportsAnalytics: React.FC<ReportsAnalyticsProps> = ({
       return overlapsRange(invoice.periodStartDate, invoice.periodEndDate, range);
     });
 
-    const approvedTimesheets = filteredTimesheets.filter(timesheet => timesheet.status === 'approved');
-    const pendingTimesheets = filteredTimesheets.filter(timesheet => timesheet.status === 'pending_approval');
+    const approvedTimesheets = filteredTimesheets.filter(timesheet => isRevenueRecognizedStatus(timesheet.status));
+    const pendingTimesheets = filteredTimesheets.filter(timesheet => isAgencyApprovalStatus(timesheet.status));
     const allRevenue = filteredTimesheets.reduce((sum, timesheet) => sum + timesheet.subtotalBill, 0);
     const approvedRevenue = approvedTimesheets.reduce((sum, timesheet) => sum + timesheet.subtotalBill, 0);
     const payroll = filteredTimesheets.reduce((sum, timesheet) => sum + timesheet.subtotalPay, 0);
@@ -306,7 +312,7 @@ export const ReportsAnalytics: React.FC<ReportsAnalyticsProps> = ({
         <div className="glass-card metric-card">
           <div className="metric-header"><span>Billable Revenue</span></div>
           <div className="metric-value">{currency.format(report.metrics.allRevenue)}</div>
-          <p className="metric-subtext">{currency.format(report.metrics.approvedRevenue)} approved</p>
+          <p className="metric-subtext">{currency.format(report.metrics.approvedRevenue)} agency approved or later</p>
         </div>
         <div className="glass-card metric-card">
           <div className="metric-header"><span>Payroll Liability</span></div>
@@ -417,7 +423,7 @@ export const ReportsAnalytics: React.FC<ReportsAnalyticsProps> = ({
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-sub)' }}>{row.client} | {row.payCycle}</div>
                   </td>
                   <td>{row.period}</td>
-                  <td><span className={`badge badge-${row.status}`}>{row.status}</span></td>
+                  <td><span className={`badge ${getTimesheetStatusClass(row.status)}`}>{getTimesheetStatusLabel(row.status)}</span></td>
                   <td>
                     {row.hours.toFixed(1)}
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-sub)' }}>Reg {row.regular.toFixed(1)} | OT {row.overtime.toFixed(1)} | DT {row.doubleTime.toFixed(1)}</div>
@@ -439,7 +445,7 @@ export const ReportsAnalytics: React.FC<ReportsAnalyticsProps> = ({
           <div>
             <h3 style={{ fontSize: '1.1rem' }}>Billing, Tax & Aging</h3>
             <p style={{ color: 'var(--text-sub)', fontSize: '0.82rem' }}>
-              GST/HST: {currency.format(report.metrics.gstHst)} | QST: {currency.format(report.metrics.qst)} | Pending approval billing: {currency.format(report.metrics.pendingBilling)}
+              GST/HST: {currency.format(report.metrics.gstHst)} | QST: {currency.format(report.metrics.qst)} | Awaiting agency approval billing: {currency.format(report.metrics.pendingBilling)}
             </p>
           </div>
           <button

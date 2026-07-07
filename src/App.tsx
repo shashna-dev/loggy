@@ -7,6 +7,16 @@ import { AdminPortal } from './components/AdminPortal';
 import { getProvinceTax } from './utils';
 import { LogOut, RefreshCw } from 'lucide-react';
 
+function normalizeTimesheetStatus(status: string): Timesheet['status'] {
+  if (status === 'pending_approval') return 'submitted';
+  if (status === 'approved') return 'agency_approved';
+  return status as Timesheet['status'];
+}
+
+function normalizeTimesheets(items: Timesheet[]): Timesheet[] {
+  return items.map(item => ({ ...item, status: normalizeTimesheetStatus(item.status) }));
+}
+
 function App() {
   // 1. Initial State from localStorage or Mock Seed Data
   const [workers, setWorkers] = useState<Worker[]>(() => {
@@ -26,7 +36,7 @@ function App() {
 
   const [timesheets, setTimesheets] = useState<Timesheet[]>(() => {
     const local = localStorage.getItem('agency_timesheets');
-    return local ? JSON.parse(local) : mockTimesheets;
+    return local ? normalizeTimesheets(JSON.parse(local)) : normalizeTimesheets(mockTimesheets);
   });
 
   const [invoices, setInvoices] = useState<Invoice[]>(() => {
@@ -140,7 +150,10 @@ function App() {
   };
 
   const handleSaveTimesheet = (ts: Timesheet) => {
-    setTimesheets(prev => prev.map(t => t.id === ts.id ? ts : t));
+    setTimesheets(prev => {
+      const exists = prev.some(t => t.id === ts.id);
+      return exists ? prev.map(t => t.id === ts.id ? ts : t) : [...prev, ts];
+    });
   };
 
   const handleSubmitTimesheet = (id: string) => {
@@ -148,7 +161,7 @@ function App() {
       if (t.id === id) {
         return {
           ...t,
-          status: 'pending_approval' as const,
+          status: 'submitted' as const,
           submittedAt: new Date().toISOString()
         };
       }
@@ -161,7 +174,7 @@ function App() {
       if (t.id === id) {
         return {
           ...t,
-          status: 'approved' as const,
+          status: 'client_approved' as const,
           clientFeedback: undefined
         };
       }
@@ -230,10 +243,27 @@ function App() {
     };
 
     setInvoices(prev => [...prev, newInvoice]);
+    setTimesheets(prev => prev.map(t => (
+      tsIds.includes(t.id) ? { ...t, status: 'invoiced' as const } : t
+    )));
   };
 
   const handleUpdateInvoiceStatus = (id: string, status: 'pending' | 'paid') => {
     setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status } : inv));
+    if (status === 'paid') {
+      const invoice = invoices.find(inv => inv.id === id);
+      if (invoice) {
+        setTimesheets(prev => prev.map(ts => (
+          invoice.timesheetIds.includes(ts.id) ? { ...ts, status: 'paid' as const } : ts
+        )));
+      }
+    }
+  };
+
+  const handleClosePayroll = (timesheetId: string) => {
+    setTimesheets(prev => prev.map(ts => (
+      ts.id === timesheetId ? { ...ts, status: 'payroll_closed' as const } : ts
+    )));
   };
 
   return (
@@ -330,6 +360,7 @@ function App() {
               onSaveTimesheet={handleSaveTimesheet}
               onGenerateInvoice={handleGenerateInvoice}
               onUpdateInvoiceStatus={handleUpdateInvoiceStatus}
+              onClosePayroll={handleClosePayroll}
             />
           )}
 
