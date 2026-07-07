@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Placement, Client, Timesheet, TimeEntry, GPSLocation } from '../types';
 import { calculateTimesheetTotals, getMapLink } from '../utils';
+import { parseTimesheetText, type ImportedTimesheetRow } from '../timesheetImport';
 import { gpsCoordinates } from '../mockData';
 import { 
   Play, 
@@ -13,7 +14,8 @@ import {
   Clock, 
   FileText,
   Trash2,
-  Edit2
+  Edit2,
+  Upload
 } from 'lucide-react';
 
 interface WorkerPortalProps {
@@ -76,6 +78,14 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
   const [manualEnd, setManualEnd] = useState('17:00');
   const [manualBreak, setManualBreak] = useState(30);
   const [manualNotes, setManualNotes] = useState('');
+
+  // Timesheet import / OCR modal state
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFileName, setImportFileName] = useState('');
+  const [importRawText, setImportRawText] = useState('');
+  const [importRows, setImportRows] = useState<ImportedTimesheetRow[]>([]);
+  const [importProcessing, setImportProcessing] = useState(false);
+  const [importError, setImportError] = useState('');
 
   // Check if worker is currently clocked in across timesheets
   useEffect(() => {
@@ -423,6 +433,88 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
     });
   };
 
+  const resetImportState = () => {
+    setImportFileName('');
+    setImportRawText('');
+    setImportRows([]);
+    setImportError('');
+    setImportProcessing(false);
+  };
+
+  const handleImportFile = async (file: File | null) => {
+    if (!file) return;
+
+    setImportFileName(file.name);
+    setImportError('');
+    setImportRows([]);
+    setImportProcessing(true);
+
+    try {
+      let text = '';
+      if (file.type.startsWith('image/')) {
+        const { recognize } = await import('tesseract.js');
+        const result = await recognize(file, 'eng');
+        text = result.data.text;
+      } else {
+        text = await file.text();
+      }
+
+      const parsedRows = parseTimesheetText(text);
+      setImportRawText(text);
+      setImportRows(parsedRows);
+
+      if (parsedRows.length === 0) {
+        setImportError('No complete shifts were found. Try a clearer image or paste text with date, start time, and end time.');
+      }
+    } catch (error) {
+      console.error(error);
+      setImportError('Could not read this file. Use a clear image, .txt, .csv, or pasted timesheet text.');
+    } finally {
+      setImportProcessing(false);
+    }
+  };
+
+  const handleParseImportText = () => {
+    const parsedRows = parseTimesheetText(importRawText);
+    setImportRows(parsedRows);
+    setImportError(parsedRows.length === 0 ? 'No complete shifts were found in the pasted text.' : '');
+  };
+
+  const handleApplyImportedRows = () => {
+    if (!activeTimesheet || !activePlacement || importRows.length === 0) return;
+
+    const importedEntries: TimeEntry[] = importRows.map((row, index) => ({
+      id: `te-import-${Date.now()}-${index}`,
+      date: row.date,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      breakMinutes: row.breakMinutes,
+      notes: row.workerName
+        ? `${row.notes} Source worker: ${row.workerName}.`
+        : row.notes,
+      regularHours: 0,
+      overtimeHours: 0,
+      doubleTimeHours: 0
+    }));
+
+    const updatedTimesheet: Timesheet = {
+      ...activeTimesheet,
+      entries: [...activeTimesheet.entries, ...importedEntries]
+    };
+
+    const recalculated = calculateTimesheetTotals(updatedTimesheet.entries, activePlacement);
+    onSaveTimesheet({
+      ...updatedTimesheet,
+      entries: recalculated.entries,
+      totalHours: recalculated.totalHours,
+      subtotalPay: recalculated.subtotalPay,
+      subtotalBill: recalculated.subtotalBill
+    });
+
+    setShowImportModal(false);
+    resetImportState();
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       
@@ -584,18 +676,30 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
                     </span>
                   )}
                   {activeTimesheet && (activeTimesheet.status === 'draft' || activeTimesheet.status === 'rejected') && (
-                    <button 
-                      className="btn btn-secondary" 
-                      onClick={() => {
-                        setEditingEntryId(null);
-                        setManualDate(new Date().toISOString().split('T')[0]);
-                        setManualNotes('');
-                        setShowManualModal(true);
-                      }}
-                      style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                    >
-                      <Plus size={14} /> Log Hours
-                    </button>
+                    <>
+                      <button 
+                        className="btn btn-secondary" 
+                        onClick={() => {
+                          resetImportState();
+                          setShowImportModal(true);
+                        }}
+                        style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                      >
+                        <Upload size={14} /> Import Timesheet
+                      </button>
+                      <button 
+                        className="btn btn-secondary" 
+                        onClick={() => {
+                          setEditingEntryId(null);
+                          setManualDate(new Date().toISOString().split('T')[0]);
+                          setManualNotes('');
+                          setShowManualModal(true);
+                        }}
+                        style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                      >
+                        <Plus size={14} /> Log Hours
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -855,6 +959,106 @@ export const WorkerPortal: React.FC<WorkerPortalProps> = ({
                 <button type="submit" className="btn btn-primary">Save Entry</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Timesheet Import Modal */}
+      {showImportModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '860px' }}>
+            <div className="modal-header">
+              <h3>Import Timesheet From File</h3>
+              <button className="close-btn" onClick={() => setShowImportModal(false)}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Upload Image, Text, CSV, or TSV</label>
+                <input
+                  type="file"
+                  className="form-control"
+                  accept="image/*,.txt,.csv,.tsv,text/plain,text/csv"
+                  onChange={e => handleImportFile(e.target.files?.[0] || null)}
+                />
+                {importFileName && (
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-sub)', marginTop: '8px' }}>
+                    Selected: {importFileName}
+                  </p>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label>Extracted / Pasted Timesheet Text</label>
+                <textarea
+                  className="form-control"
+                  value={importRawText}
+                  onChange={e => setImportRawText(e.target.value)}
+                  placeholder="Paste timesheet text here, or upload a clear photo. Example: Liam Patel 2026-07-07 08:00 17:00 break 30"
+                  rows={6}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                <button className="btn btn-secondary" onClick={handleParseImportText} disabled={!importRawText.trim() || importProcessing}>
+                  <FileText size={16} /> Extract Fields
+                </button>
+                {importProcessing && (
+                  <span style={{ color: 'var(--color-info)', fontSize: '0.85rem', fontWeight: 600 }}>
+                    Reading file and extracting text...
+                  </span>
+                )}
+              </div>
+
+              {importError && (
+                <div style={{ background: 'var(--color-warning-bg)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '8px', padding: '12px 14px', marginBottom: '16px', color: 'var(--color-warning)', fontSize: '0.85rem' }}>
+                  {importError}
+                </div>
+              )}
+
+              <h4 style={{ fontSize: '0.95rem', marginBottom: '10px' }}>Detected Shifts</h4>
+              {importRows.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '24px', border: '1px dashed var(--border-color)', borderRadius: '8px', color: 'var(--text-muted)' }}>
+                  No shifts detected yet.
+                </div>
+              ) : (
+                <div className="table-container" style={{ marginTop: 0 }}>
+                  <table className="custom-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Date</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Break</th>
+                        <th>Confidence</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importRows.map(row => (
+                        <tr key={row.id}>
+                          <td>{row.workerName || 'Not found'}</td>
+                          <td>{row.date}</td>
+                          <td>{row.startTime}</td>
+                          <td>{row.endTime}</td>
+                          <td>{row.breakMinutes}m</td>
+                          <td>
+                            <span className={`badge ${row.confidence === 'high' ? 'badge-approved' : row.confidence === 'medium' ? 'badge-pending' : 'badge-draft'}`}>
+                              {row.confidence}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setShowImportModal(false)}>Cancel</button>
+              <button type="button" className="btn btn-primary" disabled={importRows.length === 0 || importProcessing} onClick={handleApplyImportedRows}>
+                Add {importRows.length || ''} Shift{importRows.length === 1 ? '' : 's'} to Timesheet
+              </button>
+            </div>
           </div>
         </div>
       )}
