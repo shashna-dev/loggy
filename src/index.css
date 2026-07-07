@@ -473,6 +473,7 @@ h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-body);
   font-size: 0.9rem;
   transition: all var(--transition-fast);
+  color-scheme: dark;
 }
 
 .form-control:focus {
@@ -483,6 +484,28 @@ h1, h2, h3, h4, h5, h6 {
 
 .form-control::placeholder {
   color: var(--text-muted);
+}
+
+.form-control option,
+.form-control optgroup {
+  background-color: #111827;
+  color: var(--text-main);
+}
+
+.form-control option {
+  padding: 8px 12px;
+}
+
+.form-control option:checked,
+.form-control option:hover,
+.form-control option:focus {
+  background-color: var(--primary);
+  color: #ffffff;
+}
+
+.form-control optgroup {
+  color: var(--text-sub);
+  font-weight: 700;
 }
 
 /* Grid for forms */
