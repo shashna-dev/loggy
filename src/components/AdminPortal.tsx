@@ -3,6 +3,7 @@ import type { Worker, Client, Placement, Timesheet, Invoice, CanadianProvince, P
 import { calculateTimesheetTotals, evaluateEntryGps, getProvinceTax, getMapLink } from '../utils';
 import { importedRowsToTimeEntries, type ImportedTimesheetRow } from '../timesheetImport';
 import { TimesheetImportModal } from './TimesheetImportModal';
+import { ReportsAnalytics } from './ReportsAnalytics';
 import { 
   Building2, 
   Users, 
@@ -42,7 +43,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onGenerateInvoice,
   onUpdateInvoiceStatus
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'clients' | 'workers' | 'placements' | 'approvals' | 'invoices'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'clients' | 'workers' | 'placements' | 'approvals' | 'invoices' | 'reports'>('overview');
 
   // Modals state
   const [showClientModal, setShowClientModal] = useState(false);
@@ -228,6 +229,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         <button className={`tab-link ${activeTab === 'placements' ? 'active' : ''}`} onClick={() => setActiveTab('placements')}>Placements</button>
         <button className={`tab-link ${activeTab === 'approvals' ? 'active' : ''}`} onClick={() => setActiveTab('approvals')}>Approvals Center ({pendingTimesheets.length})</button>
         <button className={`tab-link ${activeTab === 'invoices' ? 'active' : ''}`} onClick={() => setActiveTab('invoices')}>Billing & Invoices</button>
+        <button className={`tab-link ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>Reports</button>
       </div>
 
       {/* OVERVIEW TAB */}
@@ -778,6 +780,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {activeTab === 'reports' && (
+        <ReportsAnalytics
+          workers={workers}
+          clients={clients}
+          placements={placements}
+          timesheets={timesheets}
+          invoices={invoices}
+        />
       )}
 
       {/* MODAL: Add Client */}
