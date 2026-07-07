@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import type { Worker, Client, Placement, Timesheet, Invoice, CanadianProvince, PayCycle } from '../types';
-import { evaluateEntryGps, getProvinceTax, getMapLink } from '../utils';
+import { calculateTimesheetTotals, evaluateEntryGps, getProvinceTax, getMapLink } from '../utils';
+import { importedRowsToTimeEntries, type ImportedTimesheetRow } from '../timesheetImport';
+import { TimesheetImportModal } from './TimesheetImportModal';
 import { 
   Building2, 
   Users, 
@@ -9,7 +11,8 @@ import {
   Plus, 
   DollarSign, 
   Check, 
-  FileSpreadsheet
+  FileSpreadsheet,
+  Upload
 } from 'lucide-react';
 
 interface AdminPortalProps {
@@ -76,6 +79,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   // Invoicing selection state
   const [selectedTimesheets, setSelectedTimesheets] = useState<string[]>([]);
   const [invoiceClientId, setInvoiceClientId] = useState('');
+  const [importTarget, setImportTarget] = useState<{ timesheet: Timesheet; placement: Placement; workerName?: string; clientName?: string } | null>(null);
 
   // 1. Calculations for Financial Dashboard
   const approvedTimesheets = timesheets.filter(t => t.status === 'approved');
@@ -184,6 +188,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setSelectedTimesheets([]);
     setInvoiceClientId('');
     setActiveTab('invoices');
+  };
+
+  const handleApplyImportedRows = (rows: ImportedTimesheetRow[]) => {
+    if (!importTarget) return;
+
+    const importedEntries = importedRowsToTimeEntries(rows, 'agency admin upload');
+    const updatedTimesheet: Timesheet = {
+      ...importTarget.timesheet,
+      entries: [...importTarget.timesheet.entries, ...importedEntries]
+    };
+    const recalculated = calculateTimesheetTotals(updatedTimesheet.entries, importTarget.placement);
+    onSaveTimesheet({
+      ...updatedTimesheet,
+      entries: recalculated.entries,
+      totalHours: recalculated.totalHours,
+      subtotalPay: recalculated.subtotalPay,
+      subtotalBill: recalculated.subtotalBill
+    });
+    setImportTarget(null);
   };
 
   return (
@@ -513,7 +536,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                           Role: {pl.roleTitle} | Period: {ts.cycleStartDate} to {ts.cycleEndDate} ({ts.payCycle})
                         </span>
                       </div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button className="btn btn-secondary" onClick={() => setImportTarget({ timesheet: ts, placement: pl, workerName: wr.name, clientName: cl.companyName })} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                          <Upload size={14} /> Import
+                        </button>
                         <button className="btn btn-danger" onClick={handleAdminReject} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>Reject</button>
                         <button className="btn btn-success" onClick={handleAdminApprove} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>Approve</button>
                       </div>
@@ -958,6 +984,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {importTarget && (
+        <TimesheetImportModal
+          title="Import Agency Timesheet"
+          targetLabel={`${importTarget.workerName || 'Worker'} @ ${importTarget.clientName || 'Client'} | ${importTarget.timesheet.cycleStartDate} to ${importTarget.timesheet.cycleEndDate}`}
+          onClose={() => setImportTarget(null)}
+          onApply={handleApplyImportedRows}
+        />
       )}
     </div>
   );

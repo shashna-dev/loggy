@@ -340,6 +340,7 @@ function App() {
               placements={placements}
               workers={workers}
               timesheets={timesheets}
+              onSaveTimesheet={handleSaveTimesheet}
               onApproveTimesheet={handleApproveTimesheet}
               onRejectTimesheet={handleRejectTimesheet}
             />

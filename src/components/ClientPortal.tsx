@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import type { Placement, Worker, Timesheet, Client } from '../types';
-import { evaluateEntryGps, getMapLink } from '../utils';
+import { calculateTimesheetTotals, evaluateEntryGps, getMapLink } from '../utils';
+import { importedRowsToTimeEntries, type ImportedTimesheetRow } from '../timesheetImport';
+import { TimesheetImportModal } from './TimesheetImportModal';
 import { 
   Users, 
   CheckCircle, 
   XCircle, 
   MapPin, 
   Eye, 
-  AlertCircle
+  AlertCircle,
+  Upload
 } from 'lucide-react';
 
 interface ClientPortalProps {
@@ -16,6 +19,7 @@ interface ClientPortalProps {
   placements: Placement[];
   workers: Worker[];
   timesheets: Timesheet[];
+  onSaveTimesheet: (timesheet: Timesheet) => void;
   onApproveTimesheet: (timesheetId: string) => void;
   onRejectTimesheet: (timesheetId: string, feedback: string) => void;
 }
@@ -26,6 +30,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
   placements,
   workers,
   timesheets,
+  onSaveTimesheet,
   onApproveTimesheet,
   onRejectTimesheet
 }) => {
@@ -46,6 +51,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
   const [viewingTimesheet, setViewingTimesheet] = useState<Timesheet | null>(null);
   const [rejectFeedback, setRejectFeedback] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [importTarget, setImportTarget] = useState<{ timesheet: Timesheet; placement: Placement; workerName?: string } | null>(null);
 
   // Stats
   const activeRosterCount = clientPlacements.length;
@@ -69,6 +75,28 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
     onRejectTimesheet(viewingTimesheet.id, rejectFeedback.trim());
     setShowRejectModal(false);
     setViewingTimesheet(null);
+  };
+
+  const handleApplyImportedRows = (rows: ImportedTimesheetRow[]) => {
+    if (!importTarget) return;
+
+    const importedEntries = importedRowsToTimeEntries(rows, 'client manager upload');
+    const updatedTimesheet: Timesheet = {
+      ...importTarget.timesheet,
+      entries: [...importTarget.timesheet.entries, ...importedEntries]
+    };
+    const recalculated = calculateTimesheetTotals(updatedTimesheet.entries, importTarget.placement);
+    const savedTimesheet = {
+      ...updatedTimesheet,
+      entries: recalculated.entries,
+      totalHours: recalculated.totalHours,
+      subtotalPay: recalculated.subtotalPay,
+      subtotalBill: recalculated.subtotalBill
+    };
+
+    onSaveTimesheet(savedTimesheet);
+    setViewingTimesheet(savedTimesheet);
+    setImportTarget(null);
   };
 
   return (
@@ -208,7 +236,12 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
                         Role: {pl.roleTitle} | Period: {viewingTimesheet.cycleStartDate} to {viewingTimesheet.cycleEndDate}
                       </p>
                     </div>
-                    <button className="close-btn" onClick={() => setViewingTimesheet(null)}>&times;</button>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: '0.78rem' }} onClick={() => setImportTarget({ timesheet: viewingTimesheet, placement: pl, workerName: wr.name })}>
+                        <Upload size={14} /> Import
+                      </button>
+                      <button className="close-btn" onClick={() => setViewingTimesheet(null)}>&times;</button>
+                    </div>
                   </div>
 
                   {/* Highlight GPS Tracking Info */}
@@ -396,6 +429,15 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {importTarget && (
+        <TimesheetImportModal
+          title="Import Client Timesheet"
+          targetLabel={`${importTarget.workerName || 'Worker'} | ${importTarget.timesheet.cycleStartDate} to ${importTarget.timesheet.cycleEndDate}`}
+          onClose={() => setImportTarget(null)}
+          onApply={handleApplyImportedRows}
+        />
       )}
     </div>
   );

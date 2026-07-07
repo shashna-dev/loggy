@@ -1,3 +1,4 @@
+import type { TimeEntry } from './types';
 import { minutesToTime, timeToMinutes } from './utils';
 
 export interface ImportedTimesheetRow {
@@ -197,4 +198,23 @@ export function parseTimesheetText(text: string): ImportedTimesheetRow[] {
       confidence: times.length >= 2 ? 'medium' as const : 'low' as const
     }];
   });
+}
+
+export function importedRowsToTimeEntries(
+  rows: ImportedTimesheetRow[],
+  sourceLabel = 'uploaded timesheet'
+): TimeEntry[] {
+  return rows.map((row, index) => ({
+    id: `te-import-${Date.now()}-${index}`,
+    date: row.date,
+    startTime: row.startTime,
+    endTime: row.endTime,
+    breakMinutes: row.breakMinutes,
+    notes: row.workerName
+      ? `Imported from ${sourceLabel}. Source worker: ${row.workerName}.`
+      : `Imported from ${sourceLabel}.`,
+    regularHours: 0,
+    overtimeHours: 0,
+    doubleTimeHours: 0
+  }));
 }
