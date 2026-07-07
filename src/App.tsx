@@ -43,7 +43,7 @@ function App() {
       const exists = mockUsers.find(u => u.id === parsed.id);
       if (exists) return exists;
     }
-    return mockUsers[0]; // Default to Danielle Roy (Admin)
+    return mockUsers[0]; // Default to Ilyas Jalalzai (Admin)
   });
 
   // Sync to localStorage
@@ -244,7 +244,7 @@ function App() {
           <div className="brand-logo">L</div>
           <span className="brand-name">Loggy Staffing Portal</span>
           <div className="canadian-flag-badge">
-            🇨🇦 <span>CA Compliance</span>
+            <span>CA Compliance</span>
           </div>
         </div>
 
@@ -267,7 +267,7 @@ function App() {
               onChange={(e) => setCurrentUser(JSON.parse(e.target.value))}
             >
               <optgroup label="Agency Administration">
-                <option value={JSON.stringify(mockUsers[0])}>Danielle R. (Agency Admin)</option>
+                <option value={JSON.stringify(mockUsers[0])}>Ilyas Jalalzai (Agency Admin)</option>
               </optgroup>
               <optgroup label="Client Managers (Approvers)">
                 <option value={JSON.stringify(mockUsers[1])}>Marcus V. (ON Client Manager)</option>

@@ -2,7 +2,7 @@ import type { Worker, Client, Placement, Timesheet, User } from './types';
 
 // Mock Users
 export const mockUsers: User[] = [
-  { id: 'u-1', name: 'Danielle Roy (Agency Admin)', email: 'admin@apexstaffing.ca', role: 'admin' },
+  { id: 'u-1', name: 'Ilyas Jalalzai (Agency Admin)', email: 'admin@apexstaffing.ca', role: 'admin' },
   { id: 'u-2', name: 'Marcus Vance (Toronto Logistics)', email: 'marcus@torontologistics.ca', role: 'client', clientId: 'c-1' },
   { id: 'u-3', name: 'Dr. Sarah Lin (BC Tech Services)', email: 'sarah@bctech.ca', role: 'client', clientId: 'c-2' },
   { id: 'u-4', name: 'Jean-Pierre Martin (Montreal Retail)', email: 'jp@montrealretail.ca', role: 'client', clientId: 'c-3' },
