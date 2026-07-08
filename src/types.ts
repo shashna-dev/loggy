@@ -116,3 +116,43 @@ export interface Invoice {
   total: number;
   status: InvoiceStatus;
 }
+
+export type AuditEntityType = 'system' | 'worker' | 'client' | 'placement' | 'timesheet' | 'invoice' | 'payroll';
+
+export interface AuditEvent {
+  id: string;
+  timestamp: string;
+  actorId: string;
+  actorName: string;
+  actorRole: UserRole;
+  action: string;
+  entityType: AuditEntityType;
+  entityId?: string;
+  summary: string;
+  metadata?: Record<string, string | number | boolean | null | undefined>;
+}
+
+export type DocumentCategory =
+  | 'timesheet'
+  | 'invoice'
+  | 'contract'
+  | 'worker_id'
+  | 'payroll'
+  | 'client_record'
+  | 'other';
+
+export type DocumentLinkedEntityType = 'client' | 'worker' | 'placement' | 'timesheet' | 'invoice' | 'none';
+
+export interface DocumentRecord {
+  id: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  dataUrl: string;
+  category: DocumentCategory;
+  linkedEntityType: DocumentLinkedEntityType;
+  linkedEntityId?: string;
+  notes?: string;
+  uploadedAt: string;
+  uploadedBy: string;
+}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { User, Worker, Client, Placement, Timesheet, Invoice } from './types';
+import type { User, Worker, Client, Placement, Timesheet, Invoice, AuditEvent, AuditEntityType, DocumentRecord } from './types';
 import { mockUsers, mockWorkers, mockClients, mockPlacements, mockTimesheets } from './mockData';
 import { WorkerPortal } from './components/WorkerPortal';
 import { ClientPortal } from './components/ClientPortal';
@@ -44,6 +44,16 @@ function App() {
     return local ? JSON.parse(local) : [];
   });
 
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>(() => {
+    const local = localStorage.getItem('agency_audit_events');
+    return local ? JSON.parse(local) : [];
+  });
+
+  const [documentRecords, setDocumentRecords] = useState<DocumentRecord[]>(() => {
+    const local = localStorage.getItem('agency_documents');
+    return local ? JSON.parse(local) : [];
+  });
+
   // Role switching control state
   const [currentUser, setCurrentUser] = useState<User>(() => {
     const saved = localStorage.getItem('agency_active_user');
@@ -81,6 +91,36 @@ function App() {
     localStorage.setItem('agency_active_user', JSON.stringify(currentUser));
   }, [currentUser]);
 
+  useEffect(() => {
+    localStorage.setItem('agency_audit_events', JSON.stringify(auditEvents));
+  }, [auditEvents]);
+
+  useEffect(() => {
+    localStorage.setItem('agency_documents', JSON.stringify(documentRecords));
+  }, [documentRecords]);
+
+  const addAuditEvent = (
+    action: string,
+    entityType: AuditEntityType,
+    summary: string,
+    entityId?: string,
+    metadata?: AuditEvent['metadata']
+  ) => {
+    const event: AuditEvent = {
+      id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: new Date().toISOString(),
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      action,
+      entityType,
+      entityId,
+      summary,
+      metadata
+    };
+    setAuditEvents(prev => [event, ...prev].slice(0, 1000));
+  };
+
   // Reset to initial mock seeds handler
   const handleResetData = () => {
     if (confirm('Reset all databases back to default Canadian seed data? This will clear custom entries and invoices.')) {
@@ -90,12 +130,16 @@ function App() {
       localStorage.removeItem('agency_timesheets');
       localStorage.removeItem('agency_invoices');
       localStorage.removeItem('agency_active_user');
+      localStorage.removeItem('agency_audit_events');
+      localStorage.removeItem('agency_documents');
       
       setWorkers(mockWorkers);
       setClients(mockClients);
       setPlacements(mockPlacements);
       setTimesheets(mockTimesheets);
       setInvoices([]);
+      setAuditEvents([]);
+      setDocumentRecords([]);
       setCurrentUser(mockUsers[0]);
     }
   };
@@ -103,10 +147,18 @@ function App() {
   // State modification callbacks
   const handleAddWorker = (w: Worker) => {
     setWorkers(prev => [...prev, w]);
+    addAuditEvent('Worker Created', 'worker', `Created worker ${w.name}`, w.id, {
+      province: w.province,
+      basePayRate: w.basePayRate
+    });
   };
 
   const handleAddClient = (c: Client) => {
     setClients(prev => [...prev, c]);
+    addAuditEvent('Client Created', 'client', `Created client ${c.companyName}`, c.id, {
+      province: c.province,
+      baseBillRate: c.baseBillRate
+    });
   };
 
   const handleAddPlacement = (p: Placement) => {
@@ -147,12 +199,43 @@ function App() {
     };
 
     setTimesheets(prev => [...prev, initialTimesheet]);
+    addAuditEvent('Placement Created', 'placement', `Created placement ${p.roleTitle}`, p.id, {
+      workerId: p.workerId,
+      clientId: p.clientId,
+      payCycle: p.payCycle
+    });
+    addAuditEvent('Timesheet Created', 'timesheet', `Created initial ${p.payCycle} timesheet`, initialTimesheet.id, {
+      placementId: p.id,
+      status: initialTimesheet.status
+    });
   };
 
   const handleSaveTimesheet = (ts: Timesheet) => {
+    const existing = timesheets.find(t => t.id === ts.id);
     setTimesheets(prev => {
       const exists = prev.some(t => t.id === ts.id);
       return exists ? prev.map(t => t.id === ts.id ? ts : t) : [...prev, ts];
+    });
+    if (!existing) {
+      addAuditEvent('Timesheet Created', 'timesheet', `Created timesheet ${ts.cycleStartDate} to ${ts.cycleEndDate}`, ts.id, {
+        status: ts.status,
+        entries: ts.entries.length,
+        totalHours: ts.totalHours
+      });
+      return;
+    }
+    if (existing.status !== ts.status) {
+      addAuditEvent('Timesheet Status Changed', 'timesheet', `Timesheet moved from ${existing.status} to ${ts.status}`, ts.id, {
+        previousStatus: existing.status,
+        nextStatus: ts.status,
+        totalHours: ts.totalHours
+      });
+      return;
+    }
+    addAuditEvent('Timesheet Updated', 'timesheet', `Updated timesheet ${ts.cycleStartDate} to ${ts.cycleEndDate}`, ts.id, {
+      entriesBefore: existing.entries.length,
+      entriesAfter: ts.entries.length,
+      totalHours: ts.totalHours
     });
   };
 
@@ -167,6 +250,7 @@ function App() {
       }
       return t;
     }));
+    addAuditEvent('Timesheet Submitted', 'timesheet', 'Worker submitted timesheet to client review', id);
   };
 
   const handleApproveTimesheet = (id: string) => {
@@ -180,6 +264,7 @@ function App() {
       }
       return t;
     }));
+    addAuditEvent('Client Approved Timesheet', 'timesheet', 'Client manager approved timesheet for agency review', id);
   };
 
   const handleRejectTimesheet = (id: string, feedback: string) => {
@@ -193,6 +278,9 @@ function App() {
       }
       return t;
     }));
+    addAuditEvent('Timesheet Rejected', 'timesheet', 'Timesheet rejected for worker correction', id, {
+      feedback
+    });
   };
 
   const handleGenerateInvoice = (clientId: string, tsIds: string[]) => {
@@ -246,6 +334,11 @@ function App() {
     setTimesheets(prev => prev.map(t => (
       tsIds.includes(t.id) ? { ...t, status: 'invoiced' as const } : t
     )));
+    addAuditEvent('Invoice Generated', 'invoice', `Generated invoice ${newInvoice.id}`, newInvoice.id, {
+      clientId,
+      timesheetCount: tsIds.length,
+      total: newInvoice.total
+    });
   };
 
   const handleUpdateInvoiceStatus = (id: string, status: 'pending' | 'paid') => {
@@ -258,12 +351,37 @@ function App() {
         )));
       }
     }
+    addAuditEvent('Invoice Status Changed', 'invoice', `Invoice ${id} marked ${status}`, id, {
+      status
+    });
   };
 
   const handleClosePayroll = (timesheetId: string) => {
     setTimesheets(prev => prev.map(ts => (
       ts.id === timesheetId ? { ...ts, status: 'payroll_closed' as const } : ts
     )));
+    addAuditEvent('Payroll Closed', 'payroll', 'Payroll closed for timesheet', timesheetId);
+  };
+
+  const handleAddDocument = (documentRecord: DocumentRecord) => {
+    setDocumentRecords(prev => [documentRecord, ...prev]);
+    addAuditEvent('Document Uploaded', 'system', `Uploaded ${documentRecord.fileName}`, documentRecord.id, {
+      category: documentRecord.category,
+      linkedEntityType: documentRecord.linkedEntityType,
+      linkedEntityId: documentRecord.linkedEntityId || '',
+      fileSize: documentRecord.fileSize
+    });
+  };
+
+  const handleDeleteDocument = (documentId: string) => {
+    const documentRecord = documentRecords.find(doc => doc.id === documentId);
+    setDocumentRecords(prev => prev.filter(doc => doc.id !== documentId));
+    if (documentRecord) {
+      addAuditEvent('Document Deleted', 'system', `Deleted ${documentRecord.fileName}`, documentId, {
+        category: documentRecord.category,
+        linkedEntityType: documentRecord.linkedEntityType
+      });
+    }
   };
 
   return (
@@ -354,6 +472,8 @@ function App() {
               placements={placements}
               timesheets={timesheets}
               invoices={invoices}
+              auditEvents={auditEvents}
+              documentRecords={documentRecords}
               onAddWorker={handleAddWorker}
               onAddClient={handleAddClient}
               onAddPlacement={handleAddPlacement}
@@ -361,6 +481,8 @@ function App() {
               onGenerateInvoice={handleGenerateInvoice}
               onUpdateInvoiceStatus={handleUpdateInvoiceStatus}
               onClosePayroll={handleClosePayroll}
+              onAddDocument={handleAddDocument}
+              onDeleteDocument={handleDeleteDocument}
             />
           )}
 

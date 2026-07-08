@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { Worker, Client, Placement, Timesheet, Invoice, CanadianProvince, PayCycle } from '../types';
+import type { Worker, Client, Placement, Timesheet, Invoice, CanadianProvince, PayCycle, AuditEvent, AuditEntityType, DocumentRecord } from '../types';
 import {
   calculateTimesheetTotals,
   evaluateEntryGps,
@@ -16,6 +16,7 @@ import {
 import { importedRowsToTimeEntries, type ImportedTimesheetRow } from '../timesheetImport';
 import { TimesheetImportModal } from './TimesheetImportModal';
 import { ReportsAnalytics } from './ReportsAnalytics';
+import { DocumentVault } from './DocumentVault';
 import { 
   Building2, 
   Users, 
@@ -34,6 +35,8 @@ interface AdminPortalProps {
   placements: Placement[];
   timesheets: Timesheet[];
   invoices: Invoice[];
+  auditEvents: AuditEvent[];
+  documentRecords: DocumentRecord[];
   onAddWorker: (w: Worker) => void;
   onAddClient: (c: Client) => void;
   onAddPlacement: (p: Placement) => void;
@@ -41,6 +44,8 @@ interface AdminPortalProps {
   onGenerateInvoice: (clientId: string, tsIds: string[]) => void;
   onUpdateInvoiceStatus: (id: string, status: 'pending' | 'paid') => void;
   onClosePayroll: (timesheetId: string) => void;
+  onAddDocument: (document: DocumentRecord) => void;
+  onDeleteDocument: (documentId: string) => void;
 }
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({
@@ -49,15 +54,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   placements,
   timesheets,
   invoices,
+  auditEvents,
+  documentRecords,
   onAddWorker,
   onAddClient,
   onAddPlacement,
   onSaveTimesheet,
   onGenerateInvoice,
   onUpdateInvoiceStatus,
-  onClosePayroll
+  onClosePayroll,
+  onAddDocument,
+  onDeleteDocument
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'clients' | 'workers' | 'placements' | 'approvals' | 'invoices' | 'reports'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'clients' | 'workers' | 'placements' | 'approvals' | 'invoices' | 'reports' | 'documents' | 'audit'>('overview');
+  const [auditFilter, setAuditFilter] = useState<'all' | AuditEntityType>('all');
 
   // Modals state
   const [showClientModal, setShowClientModal] = useState(false);
@@ -285,6 +295,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         <button className={`tab-link ${activeTab === 'approvals' ? 'active' : ''}`} onClick={() => setActiveTab('approvals')}>Approvals Center ({pendingTimesheets.length})</button>
         <button className={`tab-link ${activeTab === 'invoices' ? 'active' : ''}`} onClick={() => setActiveTab('invoices')}>Billing & Invoices</button>
         <button className={`tab-link ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>Reports</button>
+        <button className={`tab-link ${activeTab === 'documents' ? 'active' : ''}`} onClick={() => setActiveTab('documents')}>Documents</button>
+        <button className={`tab-link ${activeTab === 'audit' ? 'active' : ''}`} onClick={() => setActiveTab('audit')}>Audit Trail</button>
       </div>
 
       {/* OVERVIEW TAB */}
@@ -929,6 +941,90 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           timesheets={timesheets}
           invoices={invoices}
         />
+      )}
+
+      {activeTab === 'documents' && (
+        <DocumentVault
+          workers={workers}
+          clients={clients}
+          placements={placements}
+          timesheets={timesheets}
+          invoices={invoices}
+          documents={documentRecords}
+          uploadedBy="Agency Admin"
+          onAddDocument={onAddDocument}
+          onDeleteDocument={onDeleteDocument}
+        />
+      )}
+
+      {activeTab === 'audit' && (
+        <div className="glass-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap', marginBottom: '18px' }}>
+            <div>
+              <h3 style={{ fontSize: '1.2rem' }}>Operational Audit Trail</h3>
+              <p style={{ color: 'var(--text-sub)', fontSize: '0.9rem' }}>
+                Track key changes across timesheets, approvals, invoices, payroll, clients, workers, and placements.
+              </p>
+            </div>
+            <div className="form-group" style={{ minWidth: '220px', marginBottom: 0 }}>
+              <label>Filter Event Type</label>
+              <select className="form-control" value={auditFilter} onChange={event => setAuditFilter(event.target.value as 'all' | AuditEntityType)}>
+                <option value="all">All Events</option>
+                <option value="timesheet">Timesheets</option>
+                <option value="invoice">Invoices</option>
+                <option value="payroll">Payroll</option>
+                <option value="client">Clients</option>
+                <option value="worker">Workers</option>
+                <option value="placement">Placements</option>
+                <option value="system">System</option>
+              </select>
+            </div>
+          </div>
+
+          {auditEvents.length === 0 ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', borderRadius: '8px' }}>
+              No audit events recorded yet. Actions performed from this point forward will appear here.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {auditEvents
+                .filter(event => auditFilter === 'all' || event.entityType === auditFilter)
+                .map(event => (
+                  <div key={event.id} className="time-row-card" style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.015)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                      <div>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '4px' }}>
+                          <strong>{event.action}</strong>
+                          <span className="badge badge-draft">{event.entityType}</span>
+                        </div>
+                        <p style={{ color: 'var(--text-main)', fontSize: '0.88rem' }}>{event.summary}</p>
+                        <p style={{ color: 'var(--text-sub)', fontSize: '0.76rem', marginTop: '4px' }}>
+                          Actor: {event.actorName} ({event.actorRole}) {event.entityId ? `| Entity: ${event.entityId}` : ''}
+                        </p>
+                      </div>
+                      <div style={{ color: 'var(--text-sub)', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                        {new Date(event.timestamp).toLocaleString()}
+                      </div>
+                    </div>
+                    {event.metadata && Object.keys(event.metadata).length > 0 && (
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '10px' }}>
+                        {Object.entries(event.metadata).map(([key, value]) => (
+                          <span key={key} style={{ fontSize: '0.72rem', color: 'var(--text-sub)', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-color)', borderRadius: '999px', padding: '3px 8px' }}>
+                            {key}: {String(value)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              {auditEvents.filter(event => auditFilter === 'all' || event.entityType === auditFilter).length === 0 && (
+                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', borderRadius: '8px' }}>
+                  No audit events match this filter.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* MODAL: Add Client */}
