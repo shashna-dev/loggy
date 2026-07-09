@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { Worker, Client, Placement, Timesheet, Invoice, CanadianProvince, PayCycle, AuditEvent, AuditEntityType, DocumentRecord } from '../types';
 import {
   calculateTimesheetTotals,
@@ -26,8 +26,22 @@ import {
   DollarSign, 
   Check, 
   FileSpreadsheet,
-  Upload
+  Upload,
+  Search,
+  AlertTriangle,
+  Clock
 } from 'lucide-react';
+
+type AdminTab = 'overview' | 'clients' | 'workers' | 'placements' | 'approvals' | 'invoices' | 'reports' | 'documents' | 'audit';
+
+interface GlobalSearchResult {
+  id: string;
+  type: string;
+  title: string;
+  detail: string;
+  tab: AdminTab;
+  clientId?: string;
+}
 
 interface AdminPortalProps {
   workers: Worker[];
@@ -66,8 +80,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onAddDocument,
   onDeleteDocument
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'clients' | 'workers' | 'placements' | 'approvals' | 'invoices' | 'reports' | 'documents' | 'audit'>('overview');
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [auditFilter, setAuditFilter] = useState<'all' | AuditEntityType>('all');
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
 
   // Modals state
   const [showClientModal, setShowClientModal] = useState(false);
@@ -128,6 +143,134 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const totalInvoiced = invoices.reduce((sum, inv) => sum + inv.total, 0);
   const totalPaidInvoices = invoices.filter(inv => inv.status === 'paid').reduce((sum, inv) => sum + inv.total, 0);
   const totalOutstanding = totalInvoiced - totalPaidInvoices;
+  const todayDate = new Date().toISOString().split('T')[0];
+  const readyToInvoiceTimesheets = timesheets.filter(t => isReadyToInvoiceStatus(t.status));
+  const payrollDueTimesheets = timesheets.filter(t => t.status === 'paid');
+  const overdueInvoices = invoices.filter(inv => inv.status === 'pending' && inv.dueDate < todayDate);
+  const gpsExceptionTimesheets = timesheets.filter(ts => {
+    const placement = placements.find(p => p.id === ts.placementId);
+    return placement ? ts.entries.some(entry => evaluateEntryGps(entry, placement).status === 'warning') : false;
+  });
+
+  const globalSearchResults = useMemo<GlobalSearchResult[]>(() => {
+    const query = globalSearchQuery.trim().toLowerCase();
+    if (!query) return [];
+
+    const matches = (...values: Array<string | number | undefined>) =>
+      values.some(value => String(value ?? '').toLowerCase().includes(query));
+
+    const results: GlobalSearchResult[] = [];
+
+    clients.forEach(client => {
+      if (matches(client.companyName, client.contactName, client.contactEmail, client.contactPhone, client.taxNumber, client.province)) {
+        results.push({
+          id: `client-${client.id}`,
+          type: 'Client',
+          title: client.companyName,
+          detail: `${client.contactName} | ${client.province} | CAD ${client.baseBillRate.toFixed(2)}/hr`,
+          tab: 'clients'
+        });
+      }
+    });
+
+    workers.forEach(worker => {
+      if (matches(worker.name, worker.email, worker.phone, worker.province, worker.bankName, worker.bankAccount)) {
+        results.push({
+          id: `worker-${worker.id}`,
+          type: 'Worker',
+          title: worker.name,
+          detail: `${worker.email} | ${worker.province} | CAD ${worker.basePayRate.toFixed(2)}/hr`,
+          tab: 'workers'
+        });
+      }
+    });
+
+    placements.forEach(placement => {
+      const worker = workers.find(item => item.id === placement.workerId);
+      const client = clients.find(item => item.id === placement.clientId);
+      if (matches(placement.roleTitle, placement.payCycle, placement.province, placement.startDate, worker?.name, client?.companyName)) {
+        results.push({
+          id: `placement-${placement.id}`,
+          type: 'Placement',
+          title: `${worker?.name || 'Worker'} @ ${client?.companyName || 'Client'}`,
+          detail: `${placement.roleTitle} | ${placement.payCycle} | CAD ${placement.billRate.toFixed(2)}/hr bill`,
+          tab: 'placements'
+        });
+      }
+    });
+
+    timesheets.forEach(timesheet => {
+      const placement = placements.find(item => item.id === timesheet.placementId);
+      const worker = placement ? workers.find(item => item.id === placement.workerId) : undefined;
+      const client = placement ? clients.find(item => item.id === placement.clientId) : undefined;
+      const statusLabel = getTimesheetStatusLabel(timesheet.status);
+      if (matches(timesheet.id, timesheet.cycleStartDate, timesheet.cycleEndDate, statusLabel, timesheet.payCycle, worker?.name, client?.companyName, timesheet.totalHours)) {
+        results.push({
+          id: `timesheet-${timesheet.id}`,
+          type: 'Timesheet',
+          title: `${worker?.name || 'Worker'} | ${timesheet.cycleStartDate} to ${timesheet.cycleEndDate}`,
+          detail: `${client?.companyName || 'Client'} | ${statusLabel} | ${timesheet.totalHours} hrs`,
+          tab: isAgencyApprovalStatus(timesheet.status) ? 'approvals' : 'reports',
+          clientId: client?.id
+        });
+      }
+    });
+
+    invoices.forEach(invoice => {
+      const client = clients.find(item => item.id === invoice.clientId);
+      if (matches(invoice.id, invoice.invoiceDate, invoice.dueDate, invoice.status, client?.companyName, invoice.total)) {
+        results.push({
+          id: `invoice-${invoice.id}`,
+          type: 'Invoice',
+          title: invoice.id,
+          detail: `${client?.companyName || 'Client'} | ${invoice.status} | CAD ${invoice.total.toFixed(2)}`,
+          tab: 'invoices',
+          clientId: invoice.clientId
+        });
+      }
+    });
+
+    documentRecords.forEach(document => {
+      if (matches(document.fileName, document.category, document.linkedEntityType, document.linkedEntityId, document.notes, document.uploadedBy, document.uploadedAt)) {
+        results.push({
+          id: `document-${document.id}`,
+          type: 'Document',
+          title: document.fileName,
+          detail: `${document.category} | ${document.linkedEntityType} | ${document.uploadedBy}`,
+          tab: 'documents'
+        });
+      }
+    });
+
+    auditEvents.forEach(event => {
+      if (matches(event.action, event.summary, event.entityType, event.entityId, event.actorName, event.timestamp)) {
+        results.push({
+          id: `audit-${event.id}`,
+          type: 'Audit',
+          title: event.action,
+          detail: `${event.actorName} | ${event.entityType} | ${new Date(event.timestamp).toLocaleDateString()}`,
+          tab: 'audit'
+        });
+      }
+    });
+
+    return results.slice(0, 12);
+  }, [globalSearchQuery, clients, workers, placements, timesheets, invoices, documentRecords, auditEvents]);
+
+  const openSearchResult = (result: GlobalSearchResult) => {
+    if (result.clientId && result.tab === 'invoices') {
+      handleInvoiceClientChange(result.clientId);
+    }
+    setActiveTab(result.tab);
+    setGlobalSearchQuery('');
+  };
+
+  const openReadyToInvoiceQueue = () => {
+    const firstReady = readyToInvoiceTimesheets[0];
+    const placement = firstReady ? placements.find(p => p.id === firstReady.placementId) : undefined;
+    handleInvoiceClientChange(placement?.clientId || '');
+    setActiveTab('invoices');
+  };
 
   // Add handlers
   const handleAddClient = (e: React.FormEvent) => {
@@ -299,6 +442,35 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         <button className={`tab-link ${activeTab === 'audit' ? 'active' : ''}`} onClick={() => setActiveTab('audit')}>Audit Trail</button>
       </div>
 
+      <div className="global-search-wrap">
+        <div className="global-search-field">
+          <Search size={18} />
+          <input
+            value={globalSearchQuery}
+            onChange={event => setGlobalSearchQuery(event.target.value)}
+            placeholder="Search clients, workers, invoices, timesheets, documents"
+            aria-label="Global admin search"
+          />
+        </div>
+        {globalSearchQuery.trim() && (
+          <div className="global-search-results">
+            {globalSearchResults.length === 0 ? (
+              <div className="global-search-empty">No matches found.</div>
+            ) : (
+              globalSearchResults.map(result => (
+                <button key={result.id} className="global-search-result" onClick={() => openSearchResult(result)}>
+                  <span className="badge badge-draft">{result.type}</span>
+                  <span>
+                    <strong>{result.title}</strong>
+                    <small>{result.detail}</small>
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
       {/* OVERVIEW TAB */}
       {activeTab === 'overview' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -343,6 +515,44 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </div>
               <p className="metric-subtext">Total generated pending payment</p>
             </div>
+          </div>
+
+          <div className="shortcut-grid">
+            <button className="shortcut-card" onClick={() => setActiveTab('approvals')}>
+              <Check size={18} />
+              <span>
+                <strong>{pendingTimesheets.length}</strong>
+                <small>Needs Approval</small>
+              </span>
+            </button>
+            <button className="shortcut-card" onClick={openReadyToInvoiceQueue}>
+              <FileSpreadsheet size={18} />
+              <span>
+                <strong>{readyToInvoiceTimesheets.length}</strong>
+                <small>Ready to Invoice</small>
+              </span>
+            </button>
+            <button className="shortcut-card" onClick={() => setActiveTab('invoices')}>
+              <Clock size={18} />
+              <span>
+                <strong>{payrollDueTimesheets.length}</strong>
+                <small>Payroll Due</small>
+              </span>
+            </button>
+            <button className="shortcut-card" onClick={() => setActiveTab('approvals')}>
+              <AlertTriangle size={18} />
+              <span>
+                <strong>{gpsExceptionTimesheets.length}</strong>
+                <small>GPS Exceptions</small>
+              </span>
+            </button>
+            <button className="shortcut-card" onClick={() => setActiveTab('invoices')}>
+              <DollarSign size={18} />
+              <span>
+                <strong>{overdueInvoices.length}</strong>
+                <small>Overdue Invoices</small>
+              </span>
+            </button>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }} className="form-row">
@@ -963,7 +1173,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             <div>
               <h3 style={{ fontSize: '1.2rem' }}>Operational Audit Trail</h3>
               <p style={{ color: 'var(--text-sub)', fontSize: '0.9rem' }}>
-                Track key changes across timesheets, approvals, invoices, payroll, clients, workers, and placements.
+                Track key changes across timesheets, approvals, invoices, payroll, documents, clients, workers, and placements.
               </p>
             </div>
             <div className="form-group" style={{ minWidth: '220px', marginBottom: 0 }}>
@@ -973,6 +1183,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <option value="timesheet">Timesheets</option>
                 <option value="invoice">Invoices</option>
                 <option value="payroll">Payroll</option>
+                <option value="document">Documents</option>
                 <option value="client">Clients</option>
                 <option value="worker">Workers</option>
                 <option value="placement">Placements</option>

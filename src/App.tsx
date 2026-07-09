@@ -365,7 +365,7 @@ function App() {
 
   const handleAddDocument = (documentRecord: DocumentRecord) => {
     setDocumentRecords(prev => [documentRecord, ...prev]);
-    addAuditEvent('Document Uploaded', 'system', `Uploaded ${documentRecord.fileName}`, documentRecord.id, {
+    addAuditEvent('Document Uploaded', 'document', `Uploaded ${documentRecord.fileName}`, documentRecord.id, {
       category: documentRecord.category,
       linkedEntityType: documentRecord.linkedEntityType,
       linkedEntityId: documentRecord.linkedEntityId || '',
@@ -377,7 +377,7 @@ function App() {
     const documentRecord = documentRecords.find(doc => doc.id === documentId);
     setDocumentRecords(prev => prev.filter(doc => doc.id !== documentId));
     if (documentRecord) {
-      addAuditEvent('Document Deleted', 'system', `Deleted ${documentRecord.fileName}`, documentId, {
+      addAuditEvent('Document Deleted', 'document', `Deleted ${documentRecord.fileName}`, documentId, {
         category: documentRecord.category,
         linkedEntityType: documentRecord.linkedEntityType
       });

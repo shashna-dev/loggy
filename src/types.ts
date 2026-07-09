@@ -117,7 +117,7 @@ export interface Invoice {
   status: InvoiceStatus;
 }
 
-export type AuditEntityType = 'system' | 'worker' | 'client' | 'placement' | 'timesheet' | 'invoice' | 'payroll';
+export type AuditEntityType = 'system' | 'worker' | 'client' | 'placement' | 'timesheet' | 'invoice' | 'payroll' | 'document';
 
 export interface AuditEvent {
   id: string;
